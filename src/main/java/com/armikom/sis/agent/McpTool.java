@@ -93,6 +93,10 @@ public record McpTool(String name, String title, String description, Map<String,
         return Map.of("type", "string", "enum", List.of(values), "description", description);
     }
 
+    static Map<String, Object> intList(String description) {
+        return Map.of("type", "array", "items", Map.of("type", "integer"), "description", description);
+    }
+
     static Map<String, Object> chapter() {
         return integer("Chapter (week) number in the course, see list_chapters.");
     }
@@ -165,6 +169,28 @@ public record McpTool(String name, String title, String description, Map<String,
                 return Boolean.parseBoolean(v.asString().trim());
             }
             throw new IllegalArgumentException("The argument '" + name + "' must be true or false.");
+        }
+
+        /** A list of whole numbers, or null when the argument is missing. */
+        public List<Long> optLongList(String name) {
+            JsonNode v = node.path(name);
+            if (v.isMissingNode() || v.isNull()) {
+                return null;
+            }
+            if (!v.isArray()) {
+                throw new IllegalArgumentException("The argument '" + name + "' must be a list of whole numbers.");
+            }
+            List<Long> out = new ArrayList<>();
+            for (JsonNode e : v) {
+                if (e.isIntegralNumber()) {
+                    out.add(e.asLong());
+                } else if (e.isString() && e.asString().trim().matches("\\d+")) {
+                    out.add(Long.parseLong(e.asString().trim()));
+                } else {
+                    throw new IllegalArgumentException("The argument '" + name + "' must be a list of whole numbers.");
+                }
+            }
+            return out;
         }
 
         public JsonNode raw(String name) {

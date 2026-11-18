@@ -50,6 +50,16 @@ public class ExamController {
         service.delete(id);
     }
 
+    @PostMapping("/exams/{id}/publish")
+    public ExamDto publish(@PathVariable long id) {
+        return service.setPublished(id, true);
+    }
+
+    @PostMapping("/exams/{id}/unpublish")
+    public ExamDto unpublish(@PathVariable long id) {
+        return service.setPublished(id, false);
+    }
+
     @GetMapping("/exams/{id}/results")
     public List<ExamResultDto> results(@PathVariable long id) {
         return service.results(id);
@@ -88,6 +98,12 @@ public class ExamController {
     @GetMapping("/courses/{courseId}/my-results")
     public List<MyResultDto> myResults(@PathVariable long courseId) {
         return service.myResults(courseId);
+    }
+
+    /** Signed-in student: one published exam in detail, with the topics to review. */
+    @GetMapping("/courses/{courseId}/my-results/{examId}")
+    public MyResultDetailDto myResult(@PathVariable long courseId, @PathVariable long examId) {
+        return service.myResult(courseId, examId);
     }
 
     @GetMapping("/courses/{courseId}/learning")

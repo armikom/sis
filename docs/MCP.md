@@ -32,7 +32,9 @@ work: Claude Code, Claude Desktop (through `mcp-remote`), VS Code, Cursor, Codex
 | `McpPrompts` | Ready-made prompts |
 | `McpTokenService` / `McpTokenController` | Tokens; `/api/mcp-token` (GET info, POST create/replace, DELETE) |
 
-Tables (in `V1__init.sql`): `mcp_token`, `study_state`, `practice_answer`, `study_log`.
+Tables (in `V1__init.sql`): `mcp_token`, `study_state`, `practice_answer`, `study_log`. Topic tools use `topic`,
+`question_topic`, `exam_question_topic` (`V2__topics.sql`) through `PoolTopicController` / `Topics`; exam result
+tools call `ExamService`.
 
 Tools reuse the pool REST controllers (`PoolChapterController`, `PoolQuestionController`, `PoolStaffController`,
 `PoolExamController`) and core's `RosterService`, so every rule applies in the same way: attempt first, first
@@ -78,6 +80,8 @@ so on.
 | `get_question` | `question_id` | Key, reasons and explanation hidden until answered (except author and staff) |
 | `get_comments` | `question_id` | Only after the question is answered |
 | `post_comment` | `question_id`, `body`, `parent_id?` | |
+| `list_topics` | `chapter?` | Topics of the course (numbered sections of the chapter texts) with `question_count` (approved linked) |
+| `read_topic` | `topic` (id) or `chapter` + `number`, `lang?` (`en`/`tr`, default course language) | Section text in Markdown; falls back to the other language with a `note` |
 
 `chapter` is always the chapter **number** within the course.
 
@@ -85,17 +89,19 @@ so on.
 
 | Tool | Arguments | Notes |
 |---|---|---|
-| `get_progress` | — | Per chapter: `can_answer`, `answered`, `first_try_correct`, `not_answered`, `to_review`, `practice_answers`, `my_questions`, `my_approved`, `questions_to_write`, `study_status`, `confidence`, `notes`; totals; last 5 diary entries; `suggestion` |
-| `next_question` | `chapter?` | Random approved, unanswered, not own; lowest chapter first. No key. |
+| `get_progress` | — | `weak_topics` (top 5 of `review_topics`); per chapter: `can_answer`, `answered`, `first_try_correct`, `not_answered`, `to_review`, `practice_answers`, `my_questions`, `my_approved`, `questions_to_write`, `study_status`, `confidence`, `notes`; totals; last 5 diary entries; `suggestion` |
+| `next_question` | `chapter?`, `topic?` (id) | Random approved, unanswered, not own; lowest chapter first; `topic` = only questions linked to it. No key. |
 | `answer_question` | `question_id`, `selected` | Writes `question_attempt` (first answer). Refuses if already answered. |
-| `next_review_question` | `chapter?` | Answered questions, last answer wrong first, then the oldest seen. No key. |
+| `next_review_question` | `chapter?`, `topic?` (id) | Answered questions, last answer wrong first, then the oldest seen. No key. |
 | `practice_answer` | `question_id`, `selected` | Writes `practice_answer`; never changes the first answer |
 | `update_study_state` | `chapter`, `status?`, `confidence?` (1–5), `notes?` (≤4000) | Upsert; missing fields keep their value; notes replace |
+| `my_exam_results` | `exam_id?` | Without: published exams with totals (`GET /api/courses/{id}/my-results`). With: the result detail of `GET …/my-results/{examId}` (questions with answer, key, options + rationales, explanation, topics, class stats; `stats`; `reviewTopics`) |
+| `review_topics` | — | Weak topics, weakest first: `exam_missed`/`exam_total` (published exams, same rules as the result page), `pool_wrong`/`pool_answered` (first answers to approved linked questions), `unanswered_questions` |
 | `log_study_session` | `summary` (≤1500), `chapter?` | Appends to `study_log` |
 | `flag_question` | `question_id`, `reason` | |
 | `my_questions` | — | |
-| `submit_question` | `chapter`, `stem`, `option_a..d`, `correct`, `rationale_a..d`, `reference` | Same checks as the web form; starts the AI check |
-| `revise_question` | `question_id` + changed fields | Missing fields are taken from the current question |
+| `submit_question` | `chapter`, `stem`, `option_a..d`, `correct`, `rationale_a..d`, `reference`, `topic_ids?` | Same checks as the web form; starts the AI check |
+| `revise_question` | `question_id` + changed fields (incl. `topic_ids`) | Missing fields are taken from the current question |
 
 "To review" means: the latest answer of the student to that question (practice answer if any, else the first
 answer) was wrong. Diary entries without a chapter belong to no course: the student sees them in `get_progress` of
@@ -120,6 +126,10 @@ every course, staff do not see them in `student_detail`.
 | `set_chapter_open` | `chapter`, `open` | |
 | `list_exams` | — | Exams with pool questions |
 | `get_exam` | `exam_id` | Items with key and numbers (printing stays on the web site) |
+| `set_question_topics` | `question_id`, `topic_ids` | Replaces the topics (`[]` clears), any state |
+| `sync_topics` | `chapter?` | Re-derives topics from the chapter text(s); ids stay, linked topics are never deleted |
+| `topic_stats` | `chapter?` | Per topic: `linked_questions`, `approved_questions`, `first_answers`, `first_answer_correct_pct`, `exam_questions`, `exam_answers`, `exam_correct_pct` (full points, effective exam topics, all exams) |
+| `publish_exam` | `exam_id`, `published?` (default true) | Publishes / hides exam results for students |
 | `create_exam` | `title`, `questions_per_chapter` (`{"6": 3}`, chapter numbers), `forms?`, `skip_flagged?` | Fails and saves nothing if a chapter is short |
 
 Not available by MCP on purpose: deleting people or roster entries, deleting exams, editing chapter texts, the AI
@@ -128,7 +138,9 @@ helper of the discussion thread (it would spend the site's OpenRouter money).
 ## Prompts and resources
 
 - Student prompts: `study_chapter(week, course?)`, `quiz_me(week?, count?, course?)`, `review_mistakes(week?,
-  course?)`, `improve_my_question(week, course?)` (`week` = chapter number).
+  course?)`, `improve_my_question(week, course?)` (`week` = chapter number), `review_exam(exam?, course?)` (missed
+  topics of a published exam: `my_exam_results` → `read_topic` → explain with options/rationales → practise with
+  `next_question(topic)`).
 - Staff prompts: `review_pending(week?, course?)`, `weekly_report(course?)`.
 - Resources: `sis://courses/<courseId>/chapters/<number>/<en|tr>` (Markdown) for every chapter of the person's pool
   courses, also as the template `sis://courses/{course_id}/chapters/{number}/{language}`.

@@ -83,7 +83,7 @@ class ExamQueries {
         List<BigDecimal> totals = results.stream().map(r -> resultTotal(data.answers(r))).toList();
         return new ExamSummaryDto(exam.getId(), exam.getCourse().getId(), exam.getTitle(), exam.getExamDate(),
                 exam.getForms(), questions.size(), examTotal(questions), results.size(), ExamMath.average(totals),
-                exam.getCreatedAt().toString());
+                exam.getCreatedAt().toString(), exam.isPublished());
     }
 
     /** Sum of the questions' maxPoints. */

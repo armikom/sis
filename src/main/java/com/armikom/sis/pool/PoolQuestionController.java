@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.databind.PropertyNamingStrategies;
 import tools.jackson.databind.annotation.JsonNaming;
@@ -44,17 +45,19 @@ public class PoolQuestionController {
     private final JdbcClient db;
     private final PoolAccess access;
     private final AiService ai;
+    private final Topics topics;
 
-    public PoolQuestionController(JdbcClient db, PoolAccess access, AiService ai) {
+    public PoolQuestionController(JdbcClient db, PoolAccess access, AiService ai, Topics topics) {
         this.db = db;
         this.access = access;
         this.ai = ai;
+        this.topics = topics;
     }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record QuestionIn(Long chapterId, String stem, String optionA, String optionB, String optionC,
                              String optionD, String correct, String rationaleA, String rationaleB, String rationaleC,
-                             String rationaleD, String reference) {
+                             String rationaleD, String reference, List<Long> topicIds) {
 
         /** Returns a trimmed copy, or stops the request with a message the student can act on. */
         public QuestionIn checked() {
@@ -63,7 +66,8 @@ public class PoolQuestionController {
                     text("Option C", optionC, 1, 300), text("Option D", optionD, 1, 300),
                     correct == null ? "" : correct.trim().toUpperCase(Locale.ROOT), text("The reason for A", rationaleA, 10, 600),
                     text("The reason for B", rationaleB, 10, 600), text("The reason for C", rationaleC, 10, 600),
-                    text("The reason for D", rationaleD, 10, 600), text("The reference", reference, 3, 200));
+                    text("The reason for D", rationaleD, 10, 600), text("The reference", reference, 3, 200),
+                    topicIds);
             if (!LETTERS.contains(q.correct)) {
                 throw PoolException.bad("Choose the correct option (A, B, C or D).");
             }
@@ -99,9 +103,10 @@ public class PoolQuestionController {
 
     /** Question stems of a chapter. Stems of waiting questions are listed too, so students can avoid duplicates. */
     @GetMapping("/chapters/{chapterId}/questions")
-    public List<Map<String, Object>> list(@PathVariable long chapterId) {
+    public List<Map<String, Object>> list(@PathVariable long chapterId,
+                                          @RequestParam(name = "topic_id", required = false) Long topicId) {
         access.member(access.courseOfChapter(chapterId));
-        return db.sql("""
+        return topics.addTo(db.sql("""
                 select q.id, q.stem, q.status, (q.author_id = :u) as mine, u.nickname as author,
                     (a.id is not null) as attempted, a.correct as my_correct,
                     (select count(*) from question_comment c where c.question_id = q.id and not c.deleted) as comments
@@ -109,20 +114,23 @@ public class PoolQuestionController {
                 join person u on u.id = q.author_id
                 left join question_attempt a on a.question_id = q.id and a.person_id = :u
                 where q.chapter_id = :c and (q.status in ('APPROVED', 'PENDING', 'NEEDS_REVISION') or q.author_id = :u)
-                order by q.id""").param("u", access.me().personId()).param("c", chapterId).query().listOfRows();
+                  and (cast(:t as bigint) is null
+                       or exists (select 1 from question_topic qt where qt.question_id = q.id and qt.topic_id = :t))
+                order by q.id""").param("u", access.me().personId()).param("c", chapterId).param("t", topicId)
+                .query().listOfRows(), "id");
     }
 
     @GetMapping("/courses/{courseId}/questions/mine")
     public List<Map<String, Object>> mine(@PathVariable long courseId) {
         access.member(courseId);
-        return db.sql("""
+        return topics.addTo(db.sql("""
                 select q.id, q.stem, q.status, q.ai_status, q.instructor_note, q.created_at,
                     c.id as chapter_id, c.number as chapter_number, c.title as chapter_title,
                     (select count(*) from question_attempt a where a.question_id = q.id) as attempts,
                     (select count(*) from question_comment m where m.question_id = q.id and not m.deleted) as comments
                 from question q join chapter c on c.id = q.chapter_id
                 where q.author_id = :u and c.course_id = :course order by c.number, q.id""")
-                .param("u", access.me().personId()).param("course", courseId).query().listOfRows();
+                .param("u", access.me().personId()).param("course", courseId).query().listOfRows(), "id");
     }
 
     @GetMapping("/questions/{id}")
@@ -144,6 +152,7 @@ public class PoolQuestionController {
         q.put("mine", mine);
         q.put("revealed", revealed);
         q.put("my_selected", selected.orElse(null));
+        q.put("topics", topics.questionShapes(id));
         if (!privileged) {
             AUTHOR_ONLY.forEach(q::remove);
         }
@@ -277,12 +286,14 @@ public class PoolQuestionController {
             throw PoolException.bad("You already have " + course.getQuestionsPerChapter()
                     + " questions in this chapter.");
         }
+        List<Long> topicIds = in.topicIds() == null ? null : topics.requireInCourse(courseId, in.topicIds());
         long id = db.sql("""
                 insert into question (chapter_id, author_id, stem, option_a, option_b, option_c, option_d, correct,
                     rationale_a, rationale_b, rationale_c, rationale_d, reference)
                 values (:chapter, :author, :stem, :a, :b, :c, :d, :correct, :ra, :rb, :rc, :rd, :reference)
                 returning id""").param("chapter", in.chapterId()).param("author", me)
                 .params(fields(in)).query(Long.class).single();
+        if (topicIds != null) topics.setQuestionTopics(id, topicIds);
         ai.checkAsync(id);
         return Map.of("id", id);
     }
@@ -291,17 +302,20 @@ public class PoolQuestionController {
     @PutMapping("/questions/{id}")
     public Map<String, Object> update(@PathVariable long id, @RequestBody QuestionIn raw) {
         Map<String, Object> q = load(id);
-        access.member(((Number) q.get("course_id")).longValue());
+        long courseId = ((Number) q.get("course_id")).longValue();
+        access.member(courseId);
         if (!isAuthor(q, access.me().personId())) {
             throw PoolException.questionNotFound();
         }
         QuestionIn in = (raw == null ? new QuestionIn(null, null, null, null, null, null, null, null, null, null,
-                null, null) : raw).checked();
+                null, null, null) : raw).checked();
         if (!List.of("PENDING", "NEEDS_REVISION").contains(q.get("status"))) {
             throw PoolException.bad("This question is already " + q.get("status").toString().toLowerCase(Locale.ROOT)
                     + " and cannot change.");
         }
+        List<Long> topicIds = in.topicIds() == null ? null : topics.requireInCourse(courseId, in.topicIds());
         db.sql(UPDATE_FIELDS + ", status = 'PENDING' where id = :id").param("id", id).params(fields(in)).update();
+        if (topicIds != null) topics.setQuestionTopics(id, topicIds);
         ai.checkAsync(id);
         return Map.of("id", id);
     }

@@ -4,9 +4,13 @@ import com.armikom.sis.agent.McpTool.Args;
 import com.armikom.sis.agent.McpTool.Audience;
 import com.armikom.sis.common.PublicBaseUrl;
 import com.armikom.sis.core.course.CourseRepository;
+import com.armikom.sis.exam.ExamDtos.ReviewTopicDto;
+import com.armikom.sis.exam.ExamService;
 import com.armikom.sis.pool.PoolChapterController;
 import com.armikom.sis.pool.PoolException;
 import com.armikom.sis.pool.PoolQuestionController;
+import com.armikom.sis.pool.PoolTopicController;
+import com.armikom.sis.pool.Topics;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
@@ -20,6 +24,7 @@ import java.util.Optional;
 import java.util.function.Function;
 
 import static com.armikom.sis.agent.McpTool.chapter;
+import static com.armikom.sis.agent.McpTool.intList;
 import static com.armikom.sis.agent.McpTool.integer;
 import static com.armikom.sis.agent.McpTool.oneOf;
 import static com.armikom.sis.agent.McpTool.schema;
@@ -36,6 +41,8 @@ public class McpStudentTools {
 
     private static final List<String> LETTERS = List.of("A", "B", "C", "D");
     private static final List<String> STUDY_STATUSES = List.of("NOT_STARTED", "STUDYING", "REVIEWING", "DONE");
+    static final String COURSE_OF_TOPIC = "select c.course_id from topic t join chapter c on c.id = t.chapter_id "
+            + "where t.id = :id";
 
     private final JdbcClient db;
     private final JsonMapper json;
@@ -44,10 +51,16 @@ public class McpStudentTools {
     private final McpCourses courses;
     private final CourseRepository courseRepo;
     private final PublicBaseUrl baseUrl;
+    private final PoolTopicController topicApi;
+    private final Topics topics;
+    private final ExamService exams;
 
     public McpStudentTools(JdbcClient db, JsonMapper json, PoolChapterController chapters,
                            PoolQuestionController questions, McpCourses courses, CourseRepository courseRepo,
-                           PublicBaseUrl baseUrl) {
+                           PublicBaseUrl baseUrl, PoolTopicController topicApi, Topics topics, ExamService exams) {
+        this.topicApi = topicApi;
+        this.topics = topics;
+        this.exams = exams;
         this.db = db;
         this.json = json;
         this.chapters = chapters;
@@ -79,7 +92,19 @@ public class McpStudentTools {
                         "Lists the question stems of one chapter with their state and whether you answered them. "
                                 + "Waiting questions are listed too, so a student can avoid writing the same question.",
                         schema("chapter!", chapter()),
-                        c -> questions.list(chapterId(c.courseId(), c.args().num("chapter")))),
+                        c -> questions.list(chapterId(c.courseId(), c.args().num("chapter")), null)),
+                McpTool.read(Audience.ALL, "list_topics", "List topics",
+                        "Lists the topics of the course (the numbered sections of the chapter texts) with the number "
+                                + "of approved questions linked to each. Optionally only one chapter.",
+                        schema("chapter", integer("Chapter number (optional).")), c -> listTopics(c)),
+                McpTool.read(Audience.ALL, "read_topic", "Read one topic",
+                        "Returns the text of one topic (one numbered section of a chapter text) in Markdown. Address "
+                                + "it by topic id, or by chapter number + topic number. Use it to explain a weak topic.",
+                        schema("topic", integer("Topic id (from list_topics, review_topics or a question)."),
+                                "chapter", integer("Chapter number (with 'number', instead of 'topic')."),
+                                "number", integer("Topic number inside the chapter (the N of '## N. Title')."),
+                                "lang", oneOf("en or tr. Default: the course language.", "en", "tr")),
+                        c -> readTopic(c)),
                 McpTool.read(Audience.ALL, "get_question", "Get one question",
                         "Returns one question. For a student who has not answered it yet, the correct option, the "
                                 + "reasons and the explanation are NOT included: ask the student to choose first.",
@@ -113,6 +138,23 @@ public class McpStudentTools {
                                 + "results, mistakes to review, your own questions, and the saved study state (status, "
                                 + "confidence, notes). Also the last study sessions and a suggestion for what to do next.",
                         schema(), c -> progressReport(c.person().personId(), c.courseId())),
+                McpTool.read(Audience.STUDENT, "my_exam_results", "My exam results",
+                        "Without exam_id: the published exams of the course with your total points. With exam_id: "
+                                + "every question of that exam with your answer, the key, the options with their "
+                                + "rationales, the explanation, your points, the topics of the question and class "
+                                + "statistics, plus the class totals and reviewTopics (topics with missed questions, "
+                                + "most missed first).",
+                        schema("exam_id", integer("Exam id (optional).")), c -> {
+                            long courseId = c.courseId();
+                            Long examId = c.args().optNum("exam_id");
+                            return examId == null ? exams.myResults(courseId) : exams.myResult(courseId, examId);
+                        }),
+                McpTool.read(Audience.STUDENT, "review_topics", "Topics to review",
+                        "Your weak topics, weakest first: missed questions in published exams plus wrong first "
+                                + "answers in the pool, and how many approved pool questions of the topic you have "
+                                + "not answered yet. Study a topic with read_topic, then practise with "
+                                + "next_question(topic).",
+                        schema(), c -> weakTopics(c.person().personId(), c.courseId())),
                 McpTool.write(Audience.STUDENT, "update_study_state", "Save study state of a chapter",
                         "Saves where the student is in one chapter: status, confidence (1-5) and short notes about "
                                 + "weak points. Notes replace the old notes, so send the full text. The course staff "
@@ -133,7 +175,8 @@ public class McpStudentTools {
                 McpTool.read(Audience.STUDENT, "next_question", "Next question to answer",
                         "Picks an approved question that the student has not answered yet (not their own). The "
                                 + "answer is not included. Show the stem and the four options, then let the student choose.",
-                        schema("chapter", integer("Chapter number. Leave empty for any chapter.")),
+                        schema("chapter", integer("Chapter number. Leave empty for any chapter."),
+                                "topic", integer("Topic id: only questions linked to this topic (optional).")),
                         c -> nextQuestion(c)),
                 McpTool.write(Audience.STUDENT, "answer_question", "Answer a question (first answer counts)",
                         "Sends the student's OWN choice for a question. Only the first answer counts for the "
@@ -145,7 +188,8 @@ public class McpStudentTools {
                 McpTool.read(Audience.STUDENT, "next_review_question", "Next question to practise again",
                         "Picks a question the student already answered, for practice: first the ones answered wrong "
                                 + "last time, then the ones not seen for the longest time. The answer is not included.",
-                        schema("chapter", integer("Chapter number. Leave empty for any chapter.")),
+                        schema("chapter", integer("Chapter number. Leave empty for any chapter."),
+                                "topic", integer("Topic id: only questions linked to this topic (optional).")),
                         c -> nextReview(c)),
                 McpTool.write(Audience.STUDENT, "practice_answer", "Practise a question again",
                         "Checks the student's choice for a question they already answered once. It is saved for the "
@@ -244,20 +288,29 @@ public class McpStudentTools {
         return q;
     }
 
+    private static final String TOPIC_FILTER = """
+            and (cast(:t as bigint) is null
+                 or exists (select 1 from question_topic qt where qt.question_id = q.id and qt.topic_id = :t))""";
+
     private Map<String, Object> nextQuestion(McpCall c) {
         long courseId = c.courseId();
         long me = c.person().personId();
         Integer chapterNumber = c.args().optInt("chapter");
         Long chapterId = chapterNumber == null ? null : chapterId(courseId, chapterNumber);
+        Long topicId = topicArg(c, courseId);
         Optional<Long> id = db.sql("""
                 select q.id from question q join chapter c on c.id = q.chapter_id
                 where c.course_id = :course and q.status = 'APPROVED' and q.author_id <> :u
                   and (cast(:c as bigint) is null or q.chapter_id = :c)
                   and not exists (select 1 from question_attempt a where a.question_id = q.id and a.person_id = :u)
-                order by c.number, random() limit 1""")
-                .param("course", courseId).param("u", me).param("c", chapterId).query(Long.class).optional();
+                """ + TOPIC_FILTER + " order by c.number, random() limit 1")
+                .param("course", courseId).param("u", me).param("c", chapterId).param("t", topicId)
+                .query(Long.class).optional();
         if (id.isEmpty()) {
-            return Map.of("done", true, "message", chapterNumber == null
+            return Map.of("done", true, "message", topicId != null
+                    ? "No new approved questions are left for topic " + topicId
+                            + ". Use next_review_question with the same topic to practise."
+                    : chapterNumber == null
                     ? "No new approved questions are left. Use next_review_question to practise."
                     : "No new approved questions are left in chapter " + chapterNumber
                             + ". Use next_review_question to practise, or try another chapter.");
@@ -267,9 +320,20 @@ public class McpStudentTools {
                 select count(*) - 1 from question q join chapter c on c.id = q.chapter_id
                 where c.course_id = :course and q.status = 'APPROVED' and q.author_id <> :u
                   and (cast(:c as bigint) is null or q.chapter_id = :c)
-                  and not exists (select 1 from question_attempt a where a.question_id = q.id and a.person_id = :u)""")
-                .param("course", courseId).param("u", me).param("c", chapterId).query(Integer.class).single());
+                  and not exists (select 1 from question_attempt a where a.question_id = q.id and a.person_id = :u)
+                """ + TOPIC_FILTER)
+                .param("course", courseId).param("u", me).param("c", chapterId).param("t", topicId)
+                .query(Integer.class).single());
         return q;
+    }
+
+    /** The optional {@code topic} argument, checked to be a topic of the course. */
+    private Long topicArg(McpCall c, long courseId) {
+        Long topicId = c.args().optNum("topic");
+        if (topicId != null && topics.courseOf(topicId).filter(x -> x == courseId).isEmpty()) {
+            throw new IllegalArgumentException("There is no topic " + topicId + " in this course. Use list_topics.");
+        }
+        return topicId;
     }
 
     private Map<String, Object> answer(McpCall c) {
@@ -294,6 +358,7 @@ public class McpStudentTools {
         long me = c.person().personId();
         Integer chapterNumber = c.args().optInt("chapter");
         Long chapterId = chapterNumber == null ? null : chapterId(courseId, chapterNumber);
+        Long topicId = topicArg(c, courseId);
         List<Map<String, Object>> queue = db.sql("""
                 select s.*, coalesce(s.last_practice_correct, s.first_correct) as last_correct,
                     coalesce(s.last_practice_at, s.first_at) as last_seen
@@ -310,9 +375,11 @@ public class McpStudentTools {
                     join chapter c on c.id = q.chapter_id
                     where a.person_id = :u and c.course_id = :course and q.status = 'APPROVED'
                       and (cast(:c as bigint) is null or q.chapter_id = :c)
+                """ + TOPIC_FILTER + """
                 ) s
                 order by coalesce(s.last_practice_correct, s.first_correct), coalesce(s.last_practice_at, s.first_at)
-                """).param("u", me).param("course", courseId).param("c", chapterId).query().listOfRows();
+                """).param("u", me).param("course", courseId).param("c", chapterId).param("t", topicId)
+                .query().listOfRows();
         if (queue.isEmpty()) {
             return Map.of("done", true, "message",
                     "Nothing to practise yet. Answer some questions first with next_question.");
@@ -486,6 +553,7 @@ public class McpStudentTools {
         out.put("totals", totals);
         out.put("chapters", chapterRows);
         out.put("recent_sessions", studyLog(personId, courseId, 5, true));
+        out.put("weak_topics", weakTopics(personId, courseId).stream().limit(5).toList());
         out.put("suggestion", suggestion(chapterRows));
         return out;
     }
@@ -511,6 +579,111 @@ public class McpStudentTools {
             }
         }
         return "Everything is answered. Keep practising with next_review_question before the exam.";
+    }
+
+    // ---------- topics ----------
+
+    private List<Map<String, Object>> listTopics(McpCall c) {
+        long courseId = c.courseId();
+        Integer chapter = c.args().optInt("chapter");
+        if (chapter != null) chapterId(courseId, chapter);
+        return topicApi.list(courseId).stream()
+                .filter(t -> chapter == null || ((Number) t.get("chapter_number")).intValue() == chapter).toList();
+    }
+
+    private Map<String, Object> readTopic(McpCall c) {
+        Args a = c.args();
+        long topicId;
+        long courseId;
+        if (a.has("topic")) {
+            topicId = a.num("topic");
+            courseId = c.courseOf(COURSE_OF_TOPIC, topicId, "Topic not found. Use list_topics.");
+        } else {
+            if (!a.has("chapter") || !a.has("number")) {
+                throw new IllegalArgumentException("Pass 'topic' (topic id), or 'chapter' and 'number'.");
+            }
+            courseId = c.courseId();
+            long ch = chapterId(courseId, a.num("chapter"));
+            long number = a.num("number");
+            topicId = db.sql("select id from topic where chapter_id = :c and number = :n").param("c", ch)
+                    .param("n", number).query(Long.class).optional()
+                    .orElseThrow(() -> new IllegalArgumentException("Chapter " + a.optStr("chapter")
+                            + " has no topic " + number + ". Use list_topics."));
+        }
+        Map<String, Object> t = topicApi.get(topicId);
+        String lang = a.optStr("lang");
+        if (lang == null || lang.isBlank()) {
+            lang = courseRepo.findById(courseId).map(x -> x.getLanguage()).orElse("en");
+        }
+        lang = "tr".equalsIgnoreCase(lang.trim()) ? "tr" : "en";
+        String other = lang.equals("tr") ? "en" : "tr";
+        String text = (String) t.get("content_" + lang);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("topic_id", t.get("id"));
+        out.put("chapter", t.get("chapter_number"));
+        out.put("chapter_title", t.get("chapter_title"));
+        out.put("number", t.get("number"));
+        out.put("title_en", t.get("title_en"));
+        out.put("title_tr", t.get("title_tr"));
+        if (text.isEmpty() && !((String) t.get("content_" + other)).isEmpty()) {
+            out.put("note", "No " + lang + " text for this topic; showing the " + other + " text.");
+            lang = other;
+            text = (String) t.get("content_" + other);
+        }
+        out.put("language", lang);
+        out.put("text", text);
+        return out;
+    }
+
+    /**
+     * Weak topics of a student, weakest first: missed questions in published exams (same rules as the exam result
+     * page) plus wrong first answers to approved pool questions, with the approved questions still unanswered.
+     */
+    List<Map<String, Object>> weakTopics(long personId, long courseId) {
+        Map<Long, ReviewTopicDto> exam = new LinkedHashMap<>();
+        for (ReviewTopicDto r : exams.myReviewTopics(courseId)) exam.put(r.topic().id(), r);
+        List<Map<String, Object>> rows = db.sql("""
+                select t.id, c.number as chapter, c.title as chapter_title, t.number, t.title_en, t.title_tr,
+                    count(a.id) as pool_answered, count(a.id) filter (where not a.correct) as pool_wrong,
+                    (select count(*) from question_topic qt2 join question q2 on q2.id = qt2.question_id
+                        where qt2.topic_id = t.id and q2.status = 'APPROVED' and q2.author_id <> :u
+                          and not exists (select 1 from question_attempt a2
+                                          where a2.question_id = q2.id and a2.person_id = :u)) as unanswered_questions
+                from topic t join chapter c on c.id = t.chapter_id
+                left join question_topic qt on qt.topic_id = t.id
+                left join question q on q.id = qt.question_id and q.status = 'APPROVED'
+                left join question_attempt a on a.question_id = q.id and a.person_id = :u
+                where c.course_id = :course
+                group by t.id, c.number, c.title
+                order by c.number, t.number""").param("u", personId).param("course", courseId).query().listOfRows();
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> r : rows) {
+            long id = ((Number) r.get("id")).longValue();
+            ReviewTopicDto e = exam.get(id);
+            long examMissed = e == null ? 0 : e.missed();
+            long poolWrong = ((Number) r.get("pool_wrong")).longValue();
+            if (examMissed + poolWrong == 0) continue;
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("topic_id", id);
+            m.put("chapter", r.get("chapter"));
+            m.put("chapter_title", r.get("chapter_title"));
+            m.put("number", r.get("number"));
+            m.put("title_en", r.get("title_en"));
+            m.put("title_tr", r.get("title_tr"));
+            m.put("exam_missed", examMissed);
+            m.put("exam_total", e == null ? 0 : e.total());
+            m.put("pool_wrong", poolWrong);
+            m.put("pool_answered", r.get("pool_answered"));
+            m.put("unanswered_questions", r.get("unanswered_questions"));
+            out.add(m);
+        }
+        out.sort(java.util.Comparator
+                .<Map<String, Object>>comparingLong(m -> -(((Number) m.get("exam_missed")).longValue()
+                        + ((Number) m.get("pool_wrong")).longValue()))
+                .thenComparingLong(m -> -((Number) m.get("exam_missed")).longValue())
+                .thenComparingInt(m -> ((Number) m.get("chapter")).intValue())
+                .thenComparingInt(m -> ((Number) m.get("number")).intValue()));
+        return out;
     }
 
     // ---------- helpers ----------
@@ -544,7 +717,9 @@ public class McpStudentTools {
                 oneOf("The correct option.", "A", "B", "C", "D"), "rationale_a" + r,
                 str("Why A is right or wrong, 10-600 characters."), "rationale_b" + r, str("Why B is right or wrong."),
                 "rationale_c" + r, str("Why C is right or wrong."), "rationale_d" + r, str("Why D is right or wrong."),
-                "reference" + r, str("Where in the chapter text the answer is, for example 'Chapter 6, 3.2 Reviews'.")));
+                "reference" + r, str("Where in the chapter text the answer is, for example 'Chapter 6, 3.2 Reviews'."),
+                "topic_ids", intList("Ids of the topics the question is about (see list_topics). Replaces the "
+                        + "current topics; leave out to keep them.")));
         return schema(pairs.toArray());
     }
 
@@ -555,6 +730,6 @@ public class McpStudentTools {
         return new PoolQuestionController.QuestionIn(chapterId, f.apply("stem"),
                 f.apply("option_a"), f.apply("option_b"), f.apply("option_c"), f.apply("option_d"),
                 f.apply("correct"), f.apply("rationale_a"), f.apply("rationale_b"), f.apply("rationale_c"),
-                f.apply("rationale_d"), f.apply("reference"));
+                f.apply("rationale_d"), f.apply("reference"), a.optLongList("topic_ids"));
     }
 }

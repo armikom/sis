@@ -151,9 +151,11 @@ public class PoolExamController {
             throw PoolException.bad("This chapter has no other approved question to use.");
         }
         db.sql("""
-                update exam_question set pool_question_id = q.id, text = left(q.stem, 2000), correct_choice = q.correct
+                update exam_question set pool_question_id = q.id, text = q.stem, correct_choice = q.correct,
+                    explanation = q.explanation
                 from question q where q.id = :q and exam_question.id = :i""")
                 .param("q", drawn.get(0)).param("i", itemId).update();
+        copyOptions(itemId, drawn.get(0));
         return Map.of("ok", true);
     }
 
@@ -250,11 +252,24 @@ public class PoolExamController {
     }
 
     private void addItem(long examId, int position, long questionId) {
-        db.sql("""
+        long itemId = db.sql("""
                 insert into exam_question (exam_id, position, type, text, topic, max_points, choice_count,
-                    correct_choice, pool_question_id)
-                select :e, :p, 'CHOICE', left(q.stem, 2000), left(c.title, 120), 1, 4, q.correct, q.id
-                from question q join chapter c on c.id = q.chapter_id where q.id = :q""")
-                .param("e", examId).param("p", position).param("q", questionId).update();
+                    correct_choice, pool_question_id, explanation)
+                select :e, :p, 'CHOICE', q.stem, left(c.title, 120), 1, 4, q.correct, q.id, q.explanation
+                from question q join chapter c on c.id = q.chapter_id where q.id = :q returning id""")
+                .param("e", examId).param("p", position).param("q", questionId).query(Long.class).single();
+        copyOptions(itemId, questionId);
+    }
+
+    /** The four options of the pool question with their rationales, in the pool's own letter order. */
+    private void copyOptions(long itemId, long questionId) {
+        db.sql("delete from exam_question_option where exam_question_id = :i").param("i", itemId).update();
+        db.sql("""
+                insert into exam_question_option (exam_question_id, letter, text, rationale)
+                select :i, o.letter, o.text, o.rationale from question q
+                cross join lateral (values ('A', q.option_a, q.rationale_a), ('B', q.option_b, q.rationale_b),
+                                           ('C', q.option_c, q.rationale_c), ('D', q.option_d, q.rationale_d))
+                    as o(letter, text, rationale)
+                where q.id = :q""").param("i", itemId).param("q", questionId).update();
     }
 }

@@ -799,6 +799,10 @@ class CoreApiIntegrationTest extends ApiTestSupport {
                 .andExpect(status().isOk());
 
         String url = "/api/courses/" + course.id() + "/my-results";
+        // Unpublished exams are not listed; staff publish them.
+        assertEquals(0, body(doGet(s1, url).andExpect(status().isOk())).size());
+        doPost(owner, "/api/exams/" + examId + "/publish", null).andExpect(status().isOk());
+        doPost(owner, "/api/exams/" + second.get("id").asLong() + "/publish", null).andExpect(status().isOk());
         String raw = text(doGet(s1, url).andExpect(status().isOk()));
         JsonNode mine = json.readTree(raw);
         assertEquals(2, mine.size(), raw);

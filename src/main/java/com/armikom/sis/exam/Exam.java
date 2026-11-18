@@ -35,6 +35,10 @@ public class Exam {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    /** Students see their result of this exam only when it is published. */
+    @Column(nullable = false)
+    private boolean published;
+
     protected Exam() {}
 
     public Exam(Course course, String title, LocalDate examDate, Instant createdAt) {
@@ -55,4 +59,6 @@ public class Exam {
     public Long getSeed() { return seed; }
     public void setSeed(Long seed) { this.seed = seed; }
     public Instant getCreatedAt() { return createdAt; }
+    public boolean isPublished() { return published; }
+    public void setPublished(boolean published) { this.published = published; }
 }

@@ -12,19 +12,34 @@ public final class ExamDtos {
 
     // ---- definitions ---------------------------------------------------------------------------
 
+    /** A topic (numbered section of a chapter text) in camelCase. */
+    public record TopicDto(long id, long chapterId, int chapterNumber, String chapterTitle, int number,
+                           String titleEn, String titleTr) {}
+
+    /** One option of an exam question as printed ({@code letter} A..F) with why it is right or wrong. */
+    public record OptionDto(String letter, String text, String rationale) {}
+
+    /** {@code topicIds}: explicit links; {@code topics}: effective = explicit ∪ the linked pool question's topics. */
     public record QuestionDto(long id, int position, QuestionType type, String text, String topic,
-                              BigDecimal maxPoints, Integer choiceCount, String correctChoice, Long poolQuestionId) {}
+                              BigDecimal maxPoints, Integer choiceCount, String correctChoice, Long poolQuestionId,
+                              List<Long> topicIds, List<TopicDto> topics, String explanation,
+                              List<OptionDto> options) {}
 
     public record ExamDto(long id, long courseId, String courseCode, String courseName, String title,
                           LocalDate examDate, int forms, Long seed, BigDecimal totalPoints, long resultCount,
-                          String createdAt, List<QuestionDto> questions) {}
+                          String createdAt, boolean published, List<QuestionDto> questions) {}
 
     public record ExamSummaryDto(long id, long courseId, String title, LocalDate examDate, int forms,
                                  int questionCount, BigDecimal totalPoints, long resultCount,
-                                 BigDecimal averagePoints, String createdAt) {}
+                                 BigDecimal averagePoints, String createdAt, boolean published) {}
 
+    /**
+     * {@code topicIds}, {@code explanation}, {@code options}: null keeps the current value on update (none for a new
+     * question); a list replaces the set; an empty or blank explanation clears it.
+     */
     public record QuestionRequest(Long id, QuestionType type, String text, String topic, BigDecimal maxPoints,
-                                  Integer choiceCount, String correctChoice, Long poolQuestionId) {}
+                                  Integer choiceCount, String correctChoice, Long poolQuestionId,
+                                  List<Long> topicIds, String explanation, List<OptionDto> options) {}
 
     /** {@code forms} (1-4) and {@code seed} are optional; null keeps the current value (1 / none on create). */
     public record ExamRequest(String title, LocalDate examDate, List<QuestionRequest> questions, Integer forms,
@@ -47,6 +62,29 @@ public final class ExamDtos {
 
     /** One exam total of the signed-in student ({@code GET /api/courses/{id}/my-results}). */
     public record MyResultDto(long examId, String title, LocalDate examDate, BigDecimal points, BigDecimal maxPoints) {}
+
+    /** One question of a published exam as the student sees it. {@code correct}: CHOICE with key and answer only. */
+    public record MyQuestionDto(int position, String text, QuestionType type, String myAnswer, String correctChoice,
+                                Boolean correct, BigDecimal points, BigDecimal maxPoints, List<TopicDto> topics,
+                                List<OptionDto> options, String explanation, QuestionStatsDto stats) {}
+
+    /**
+     * Class aggregates of one question: answer rows, share (0..1) of scored answers with full points, average points
+     * of scored answers, and for CHOICE the count per letter A..choiceCount plus "blank" ({} otherwise).
+     */
+    public record QuestionStatsDto(int answered, BigDecimal correctShare, BigDecimal averagePoints,
+                                   Map<String, Integer> choiceCounts) {}
+
+    /** Class totals of one exam: results, average and median total, highest total (2 decimals). */
+    public record ClassStatsDto(int participants, BigDecimal average, BigDecimal median, BigDecimal maxPoints) {}
+
+    /** {@code missed} of {@code total} questions with this topic were missed (points < maxPoints). */
+    public record ReviewTopicDto(TopicDto topic, int missed, int total) {}
+
+    /** {@code GET /api/courses/{id}/my-results/{examId}}. */
+    public record MyResultDetailDto(long examId, String title, LocalDate examDate, BigDecimal points,
+                                    BigDecimal maxPoints, ClassStatsDto stats, List<MyQuestionDto> questions,
+                                    List<ReviewTopicDto> reviewTopics) {}
 
     // ---- exam analysis -------------------------------------------------------------------------
 

@@ -28,11 +28,15 @@ public class PoolStaffController {
     private final JdbcClient db;
     private final PoolAccess access;
     private final AiService ai;
+    private final Topics topics;
+    private final TopicSync topicSync;
 
-    public PoolStaffController(JdbcClient db, PoolAccess access, AiService ai) {
+    public PoolStaffController(JdbcClient db, PoolAccess access, AiService ai, Topics topics, TopicSync topicSync) {
         this.db = db;
         this.access = access;
         this.ai = ai;
+        this.topics = topics;
+        this.topicSync = topicSync;
     }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -113,10 +117,11 @@ public class PoolStaffController {
     public List<Map<String, Object>> questions(@PathVariable long courseId,
                                                @RequestParam(defaultValue = "PENDING") String status,
                                                @RequestParam(name = "chapter_id", required = false) Long chapterId,
-                                               @RequestParam(name = "chapterId", required = false) Long chapterIdAlt) {
+                                               @RequestParam(name = "chapterId", required = false) Long chapterIdAlt,
+                                               @RequestParam(name = "topic_id", required = false) Long topicId) {
         access.staff(courseId);
         Long chapter = chapterId != null ? chapterId : chapterIdAlt;
-        return db.sql("""
+        return topics.addTo(db.sql("""
                 select q.id, q.chapter_id, c.number as chapter_number, q.stem, q.option_a, q.option_b, q.option_c,
                     q.option_d, q.correct, q.rationale_a, q.rationale_b, q.rationale_c, q.rationale_d, q.reference,
                     q.status, q.ai_status, q.ai_review::text as ai_review, q.instructor_note, q.explanation,
@@ -130,8 +135,10 @@ public class PoolStaffController {
                 join chapter c on c.id = q.chapter_id
                 where c.course_id = :course and q.status = :status
                   and (cast(:chapter as bigint) is null or q.chapter_id = :chapter)
+                  and (cast(:t as bigint) is null
+                       or exists (select 1 from question_topic qt where qt.question_id = q.id and qt.topic_id = :t))
                 order by c.number, q.id""").param("course", courseId).param("status", status)
-                .param("chapter", chapter).query().listOfRows();
+                .param("chapter", chapter).param("t", topicId).query().listOfRows(), "id");
     }
 
     /** How many questions wait in each state, for the headings of the review screen. */
@@ -176,8 +183,10 @@ public class PoolStaffController {
         access.requireQuestionIn(courseId, id);
         if (raw == null) throw PoolException.bad("The question text is too short (at least 15 characters).");
         PoolQuestionController.QuestionIn in = raw.checked();
+        List<Long> topicIds = in.topicIds() == null ? null : topics.requireInCourse(courseId, in.topicIds());
         db.sql(PoolQuestionController.UPDATE_FIELDS + " where id = :id").param("id", id)
                 .params(PoolQuestionController.fields(in)).update();
+        if (topicIds != null) topics.setQuestionTopics(id, topicIds);
         return Map.of("ok", true);
     }
 
@@ -253,6 +262,7 @@ public class PoolStaffController {
                 .param("course", courseId).param("n", in.number()).param("t", title)
                 .param("en", in.docEn() == null ? "" : in.docEn()).param("tr", in.docTr() == null ? "" : in.docTr())
                 .param("o", in.open() == null || in.open()).query(Long.class).single();
+        topicSync.sync(id);
         return Map.of("id", id);
     }
 
@@ -276,6 +286,7 @@ public class PoolStaffController {
                     doc_tr = coalesce(:tr, doc_tr), open = coalesce(:o, open), number = coalesce(:n, number)
                 where id = :id""").param("t", title).param("en", in.docEn()).param("tr", in.docTr())
                 .param("o", in.open()).param("n", in.number()).param("id", id).update();
+        if (in.docEn() != null || in.docTr() != null) topicSync.sync(id);
         return Map.of("ok", true);
     }
 

@@ -57,6 +57,21 @@ final class McpPrompts {
                             believable wrong options, a reason for every option, a reference to the chapter text, simple \
                             English. Tell me what to fix, but do not write the question for me. When I say it is ready, \
                             show the final version and ask before submit_question."""),
+            new Prompt("review_exam", "Learn from my exam",
+                    "Go through the topics you missed in a published exam: read, explain, practise.", false,
+                    List.of(new Arg("exam", "Exam id (empty = the latest published exam)", false), COURSE), """
+                            Help me learn from my exam{exam_text}{course_text}.
+                            1. Call my_exam_results{exam_call}. Show my score next to the class stats and which \
+                            questions I missed. For a missed question use its options, their rationales and the \
+                            explanation to show why my answer was wrong and why the key is right; the question stats \
+                            show how the class did.
+                            2. Take the reviewTopics, most missed first. For each topic: call read_topic with its id, \
+                            explain the main ideas simply with short examples, and show how they answer the question I \
+                            missed. Ask me one quick check question in your own words.
+                            3. Practise the topic: call next_question with topic=<topic id>, show the stem and the four \
+                            options, wait for my choice and send it with answer_question. When no new questions are \
+                            left, use next_review_question with the same topic and practice_answer.
+                            4. At the end, save my weak points with update_study_state and write log_study_session."""),
             new Prompt("review_pending", "Review waiting questions",
                     "Go through the waiting questions with the AI check and statistics.", true,
                     List.of(new Arg("week", "Chapter (week) number (empty = all chapters)", false), COURSE), """
@@ -100,6 +115,7 @@ final class McpPrompts {
         String week = value(args, "week");
         String count = value(args, "count");
         String course = value(args, "course");
+        String exam = value(args, "exam");
         for (Arg a : p.args()) {
             if (a.required() && value(args, a.name()).isEmpty()) {
                 throw new McpController.RpcError(-32602, "The argument '" + a.name() + "' is required.");
@@ -107,6 +123,10 @@ final class McpPrompts {
         }
         String text = p.text().replace("{week}", week).replace("{count}", count.isEmpty() ? "5" : count)
                 .replace("{week_text}", week.isEmpty() ? "" : " for chapter " + week)
+                .replace("{exam_text}", exam.isEmpty() ? "" : " (exam id " + exam + ")")
+                .replace("{exam_call}", exam.isEmpty()
+                        ? " without exam_id, pick the latest published exam, then call it again with that exam_id"
+                        : " with exam_id=" + exam)
                 .replace("{course_text}", course.isEmpty() ? "" : " in course " + course
                         + " (pass course=" + course + " to the tools)");
         return Map.of("description", p.description(), "messages",

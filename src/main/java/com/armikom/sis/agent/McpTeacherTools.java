@@ -3,8 +3,10 @@ package com.armikom.sis.agent;
 import com.armikom.sis.agent.McpTool.Args;
 import com.armikom.sis.agent.McpTool.Audience;
 import com.armikom.sis.core.course.RosterService;
+import com.armikom.sis.exam.ExamService;
 import com.armikom.sis.pool.PoolExamController;
 import com.armikom.sis.pool.PoolStaffController;
+import com.armikom.sis.pool.PoolTopicController;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
@@ -17,6 +19,7 @@ import java.util.Map;
 
 import static com.armikom.sis.agent.McpTool.bool;
 import static com.armikom.sis.agent.McpTool.chapter;
+import static com.armikom.sis.agent.McpTool.intList;
 import static com.armikom.sis.agent.McpTool.integer;
 import static com.armikom.sis.agent.McpTool.oneOf;
 import static com.armikom.sis.agent.McpTool.schema;
@@ -43,9 +46,14 @@ public class McpTeacherTools {
     private final PoolExamController exams;
     private final McpStudentTools student;
     private final RosterService roster;
+    private final PoolTopicController topicApi;
+    private final ExamService examService;
 
     public McpTeacherTools(JdbcClient db, JsonMapper json, PoolStaffController staff, PoolExamController exams,
-                           McpStudentTools student, RosterService roster) {
+                           McpStudentTools student, RosterService roster, PoolTopicController topicApi,
+                           ExamService examService) {
+        this.topicApi = topicApi;
+        this.examService = examService;
         this.db = db;
         this.json = json;
         this.staff = staff;
@@ -145,6 +153,39 @@ public class McpTeacherTools {
                             long courseId = c.courseId();
                             return staff.updateChapter(courseId, student.chapterId(courseId, c.args().num("chapter")),
                                     new PoolStaffController.ChapterIn(null, null, null, null, c.args().optBool("open")));
+                        }),
+                // ---------- topics ----------
+                McpTool.write(t, "set_question_topics", "Set the topics of a question",
+                        "Replaces the topics of any question of the course (any state). An empty list removes all "
+                                + "topics. Topic ids come from list_topics.",
+                        schema("question_id!", integer("Question id."),
+                                "topic_ids!", intList("Topic ids of this course; [] removes all.")), c -> {
+                            long id = c.args().num("question_id");
+                            List<Long> ids = c.args().optLongList("topic_ids");
+                            if (ids == null) throw new IllegalArgumentException("The argument 'topic_ids' is required.");
+                            return topicApi.setQuestionTopics(c.courseOfQuestion(id), id,
+                                    new PoolTopicController.TopicIdsIn(ids));
+                        }),
+                McpTool.write(t, "sync_topics", "Re-read topics from chapter texts",
+                        "Derives the topics of a chapter (or of every chapter) again from the numbered '## N. Title' "
+                                + "headings of its texts. Ids stay the same; linked topics are never deleted.",
+                        schema("chapter", integer("Chapter number (optional; empty = all chapters).")),
+                        c -> syncTopics(c)),
+                McpTool.read(t, "topic_stats", "Topic statistics",
+                        "Per topic: linked questions (all / approved), first answers in the pool and their correct "
+                                + "share, and graded exam answers with full points share (effective topics of exam "
+                                + "questions). Weakest first is up to you: sort by the percentages.",
+                        schema("chapter", integer("Chapter number (optional).")), c -> topicStats(c)),
+                McpTool.write(t, "publish_exam", "Publish or unpublish exam results",
+                        "Publishes the results of an exam to the students (they see their own points per question "
+                                + "and the topics to review), or hides them again with published=false. Ask the staff "
+                                + "member first.",
+                        schema("exam_id!", integer("Exam id."),
+                                "published", bool("true (default) = students see results, false = hide them.")), c -> {
+                            long id = c.args().num("exam_id");
+                            c.courseOf(COURSE_OF_EXAM, id, "Exam not found.");
+                            Boolean published = c.args().optBool("published");
+                            return examService.setPublished(id, published == null || published);
                         }),
                 McpTool.read(t, "list_exams", "List exams", "Lists the exams built from the pool so far.", schema(),
                         c -> exams.list(c.courseId())),
@@ -263,7 +304,7 @@ public class McpTeacherTools {
         String status = a.optStr("status") == null ? "PENDING" : a.optStr("status").trim().toUpperCase(Locale.ROOT);
         Integer chapter = a.optInt("chapter");
         List<Map<String, Object>> rows = staff.questions(courseId, status,
-                chapter == null ? null : student.chapterId(courseId, chapter), null).stream()
+                chapter == null ? null : student.chapterId(courseId, chapter), null, null).stream()
                 .map(r -> (Map<String, Object>) new LinkedHashMap<>(r)).toList();
         parseReviews(rows);
         return rows;
@@ -320,6 +361,55 @@ public class McpTeacherTools {
         Map<String, Object> created = exams.create(courseId, new PoolExamController.ExamIn(a.str("title"),
                 a.optInt("forms"), byChapterId, a.optBool("skip_flagged")));
         return exam(courseId, ((Number) created.get("id")).longValue());
+    }
+
+    private List<Map<String, Object>> syncTopics(McpCall c) {
+        long courseId = c.courseId();
+        Integer chapter = c.args().optInt("chapter");
+        List<Long> chapterIds = chapter != null ? List.of(student.chapterId(courseId, chapter))
+                : db.sql("select id from chapter where course_id = :course order by number").param("course", courseId)
+                        .query(Long.class).list();
+        List<Map<String, Object>> out = new java.util.ArrayList<>();
+        for (long id : chapterIds) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("chapter", db.sql("select number from chapter where id = :id").param("id", id).query(Integer.class)
+                    .single());
+            m.put("topics", topicApi.sync(courseId, id));
+            out.add(m);
+        }
+        return out;
+    }
+
+    private List<Map<String, Object>> topicStats(McpCall c) {
+        long courseId = c.courseId();
+        Integer chapter = c.args().optInt("chapter");
+        return db.sql("""
+                with eqt as (
+                    select exam_question_id as eq, topic_id from exam_question_topic
+                    union
+                    select e.id, qt.topic_id from exam_question e join question_topic qt on qt.question_id = e.pool_question_id
+                )
+                select t.id as topic_id, c.number as chapter, t.number, t.title_en, t.title_tr,
+                    (select count(*) from question_topic qt where qt.topic_id = t.id) as linked_questions,
+                    (select count(*) from question_topic qt join question q on q.id = qt.question_id
+                        where qt.topic_id = t.id and q.status = 'APPROVED') as approved_questions,
+                    (select count(*) from question_topic qt join question_attempt a on a.question_id = qt.question_id
+                        where qt.topic_id = t.id) as first_answers,
+                    (select round(100.0 * count(*) filter (where a.correct) / nullif(count(*), 0), 1)
+                        from question_topic qt join question_attempt a on a.question_id = qt.question_id
+                        where qt.topic_id = t.id) as first_answer_correct_pct,
+                    (select count(distinct x.eq) from eqt x where x.topic_id = t.id) as exam_questions,
+                    (select count(*) from eqt x join exam_answer an on an.question_id = x.eq
+                        where x.topic_id = t.id and an.points is not null) as exam_answers,
+                    (select round(100.0 * count(*) filter (where an.points >= q.max_points) / nullif(count(*), 0), 1)
+                        from eqt x join exam_answer an on an.question_id = x.eq join exam_question q on q.id = x.eq
+                        where x.topic_id = t.id and an.points is not null) as exam_correct_pct
+                from topic t join chapter c on c.id = t.chapter_id
+                where c.course_id = :course and (cast(:c as bigint) is null or t.chapter_id = :c)
+                order by c.number, t.number""")
+                .param("course", courseId)
+                .param("c", chapter == null ? null : student.chapterId(courseId, chapter))
+                .query().listOfRows();
     }
 
     @SuppressWarnings("unchecked")

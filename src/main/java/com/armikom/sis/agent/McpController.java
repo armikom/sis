@@ -60,6 +60,8 @@ public class McpController {
             2. After the answer, explain with the reasons, the explanation and the chapter text (read_chapter).
             3. Keep the state. Start with get_progress. When you find a weak point, save it with update_study_state. \
             At the end of the session, write log_study_session. The course staff can read the state, notes and diary.
+            Topics are the numbered sections of the chapter texts: review_topics lists the weak ones (missed exam \
+            questions and wrong first answers), read_topic gives the text of one, and next_question(topic) practises it.
             4. Questions in the pool are written by the students. Give feedback on the student's draft, but do not \
             write the question for them. Ask before submit_question, revise_question, post_comment or flag_question.
             5. Do not solve lab work or homework for the student.

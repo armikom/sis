@@ -20,11 +20,13 @@ public class PoolChapterController {
     private final JdbcClient db;
     private final PoolAccess access;
     private final AiService ai;
+    private final Topics topics;
 
-    public PoolChapterController(JdbcClient db, PoolAccess access, AiService ai) {
+    public PoolChapterController(JdbcClient db, PoolAccess access, AiService ai, Topics topics) {
         this.db = db;
         this.access = access;
         this.ai = ai;
+        this.topics = topics;
     }
 
     /** The pool-specific facts the old app read from /api/me, for one course. */
@@ -67,12 +69,15 @@ public class PoolChapterController {
                 .param("u", access.me().personId()).param("course", courseId).query().listOfRows();
     }
 
-    /** One chapter with its reference document in both languages. */
+    /** One chapter with its reference document in both languages and its topics. */
     @GetMapping("/chapters/{id}")
     public Map<String, Object> get(@PathVariable long id) {
         access.member(access.courseOfChapter(id));
-        return db.sql("select id, number, title, open, doc_en, doc_tr, course_id from chapter where id = :id")
+        Map<String, Object> out = new LinkedHashMap<>(db.sql(
+                        "select id, number, title, open, doc_en, doc_tr, course_id from chapter where id = :id")
                 .param("id", id).query().listOfRows().stream().findFirst()
-                .orElseThrow(PoolException::chapterNotFound);
+                .orElseThrow(PoolException::chapterNotFound));
+        out.put("topics", topics.ofChapter(id));
+        return out;
     }
 }

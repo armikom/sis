@@ -581,4 +581,111 @@ class McpIntegrationTest extends ApiTestSupport {
         rpc(t, "resources/read", Map.of("uri", "sis://courses/" + other.course().id() + "/chapters/1/en"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.error.code").value(-32002));
     }
+
+    @Test
+    void topicAndExamStudyTools() throws Exception {
+        Fx f = fx();
+        doPut(f.owner(), "/api/pool/courses/" + f.course().id() + "/staff/chapters/" + f.chapter(),
+                Map.of("doc_en", "## 1. One\nOne en.\n## 2. Two\nTwo en.\n", "doc_tr", "## 1. Bir\nBir tr.\n"))
+                .andExpect(status().isOk());
+        String staff = token(f.owner());
+        String st = token(f.student());
+
+        JsonNode synced = call(staff, "sync_topics", NO_ARGS);
+        assertEquals(1, synced.get(0).get("chapter").asInt());
+        assertEquals(2, synced.get(0).get("topics").size());
+        long t1 = synced.get(0).get("topics").get(0).get("id").asLong();
+        long t2 = synced.get(0).get("topics").get(1).get("id").asLong();
+        JsonNode set = call(staff, "set_question_topics", Map.of("question_id", f.question(), "topic_ids", List.of(t1)));
+        assertEquals(t1, set.get("topics").get(0).get("id").asLong());
+
+        assertEquals(2, call(st, "list_topics", NO_ARGS).size());
+        assertEquals(2, call(st, "list_topics", Map.of("chapter", 1)).size());
+        JsonNode read = call(st, "read_topic", Map.of("topic", t1, "lang", "en"));
+        assertEquals("## 1. One\nOne en.", read.get("text").asString());
+        assertEquals("Bir", read.get("title_tr").asString());
+        JsonNode fallback = call(st, "read_topic", Map.of("chapter", 1, "number", 2, "lang", "tr"));
+        assertEquals("en", fallback.get("language").asString());
+        assertEquals("## 2. Two\nTwo en.", fallback.get("text").asString());
+        assertTrue(fallback.has("note"));
+        assertTrue(callError(st, "read_topic", Map.of("chapter", 1, "number", 9)).contains("no topic 9"));
+
+        // Practise by topic; a wrong first answer makes the topic weak.
+        assertTrue(call(st, "next_question", Map.of("topic", t2)).get("done").asBoolean());
+        assertEquals(f.question(), call(st, "next_question", Map.of("topic", t1)).get("id").asLong());
+        call(st, "answer_question", Map.of("question_id", f.question(), "selected", "A"));
+        assertEquals(f.question(), call(st, "next_review_question", Map.of("topic", t1)).get("id").asLong());
+        Fx other = fx();
+        long foreignTopic = jdbc.sql("insert into topic (chapter_id, number) values (:c, 1) returning id")
+                .param("c", other.chapter()).query(Long.class).single();
+        assertTrue(callError(st, "next_question", Map.of("topic", foreignTopic)).contains("no topic"));
+        JsonNode weak = call(st, "review_topics", NO_ARGS);
+        assertEquals(1, weak.size());
+        assertEquals(t1, weak.get(0).get("topic_id").asLong());
+        assertEquals(1, weak.get(0).get("pool_wrong").asInt());
+        assertEquals(0, weak.get(0).get("exam_missed").asInt());
+
+        // Students tag their own questions with topics.
+        Map<String, Object> mine = new LinkedHashMap<>(questionBody(f.chapter(), "A"));
+        mine.remove("chapter_id");
+        mine.put("chapter", 1);
+        mine.put("topic_ids", List.of(t2));
+        long written = call(st, "submit_question", mine).get("id").asLong();
+        assertEquals(t2, getQuestion(f.student(), written).get("topics").get(0).get("id").asLong());
+        call(st, "revise_question", Map.of("question_id", written, "topic_ids", List.of(t1, t2)));
+        assertEquals(2, getQuestion(f.student(), written).get("topics").size());
+
+        // A published exam with the pool question (topic via the pool link), answered wrong.
+        Map<String, Object> eq = new LinkedHashMap<>();
+        eq.put("type", "CHOICE");
+        eq.put("maxPoints", 1);
+        eq.put("choiceCount", 4);
+        eq.put("correctChoice", "B");
+        eq.put("poolQuestionId", f.question());
+        JsonNode exam = body(doPost(f.owner(), "/api/courses/" + f.course().id() + "/exams",
+                Map.of("title", "Quiz 1", "questions", List.of(eq))).andExpect(status().isCreated()));
+        long examId = exam.get("id").asLong();
+        Map<String, Object> ans = new LinkedHashMap<>();
+        ans.put("questionId", exam.get("questions").get(0).get("id").asLong());
+        ans.put("answer", "C");
+        doPut(f.owner(), "/api/exams/" + examId + "/results/" + f.student().studentNo(), Map.of("answers", List.of(ans)))
+                .andExpect(status().isOk());
+        assertEquals(0, call(st, "my_exam_results", NO_ARGS).size());
+        assertTrue(call(staff, "publish_exam", Map.of("exam_id", examId)).get("published").asBoolean());
+        assertEquals(1, call(st, "my_exam_results", NO_ARGS).size());
+        JsonNode detail = call(st, "my_exam_results", Map.of("exam_id", examId));
+        assertFalse(detail.get("questions").get(0).get("correct").asBoolean());
+        assertEquals(1, detail.get("questions").get(0).get("stats").get("answered").asInt());
+        assertTrue(detail.get("questions").get(0).has("options"));
+        assertEquals(1, detail.get("stats").get("participants").asInt());
+        assertEquals(t1, detail.get("reviewTopics").get(0).get("topic").get("id").asLong());
+
+        weak = call(st, "review_topics", NO_ARGS);
+        assertEquals(1, weak.get(0).get("exam_missed").asInt());
+        assertEquals(1, weak.get(0).get("exam_total").asInt());
+        assertEquals(t1, call(st, "get_progress", NO_ARGS).get("weak_topics").get(0).get("topic_id").asLong());
+
+        JsonNode stats = call(staff, "topic_stats", Map.of("chapter", 1));
+        JsonNode s1 = stats.get(0);
+        assertEquals(t1, s1.get("topic_id").asLong());
+        assertEquals(1, s1.get("approved_questions").asInt());
+        assertEquals(2, s1.get("linked_questions").asInt());
+        assertEquals(1, s1.get("first_answers").asInt());
+        assertEquals(0, s1.get("first_answer_correct_pct").asDouble(), 1e-6);
+        assertEquals(1, s1.get("exam_answers").asInt());
+        assertEquals(0, s1.get("exam_correct_pct").asDouble(), 1e-6);
+
+        String text = result(st, "prompts/get", Map.of("name", "review_exam", "arguments", Map.of("exam", examId)))
+                .get("messages").get(0).get("content").get("text").asString();
+        assertTrue(text.contains("exam_id=" + examId), text);
+        assertTrue(text.contains("read_topic"));
+
+        assertFalse(call(staff, "publish_exam", Map.of("exam_id", examId, "published", false))
+                .get("published").asBoolean());
+        assertEquals(0, call(st, "my_exam_results", NO_ARGS).size());
+        assertTrue(callError(st, "my_exam_results", Map.of("exam_id", examId)).length() > 0);
+        // Students do not see the teacher tool at all.
+        rpc(st, "tools/call", Map.of("name", "publish_exam", "arguments", Map.of("exam_id", examId)))
+                .andExpect(jsonPath("$.error.code").value(-32602));
+    }
 }

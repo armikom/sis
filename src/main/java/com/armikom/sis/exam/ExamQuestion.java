@@ -23,8 +23,12 @@ public class ExamQuestion {
     @Column(nullable = false, length = 16)
     private QuestionType type;
 
-    @Column(length = 2000)
+    @Column(columnDefinition = "text")
     private String text;
+
+    /** Overall explanation of the answer. */
+    @Column(columnDefinition = "text")
+    private String explanation;
 
     @Column(length = 120)
     private String topic;
@@ -56,6 +60,8 @@ public class ExamQuestion {
     public void setType(QuestionType type) { this.type = type; }
     public String getText() { return text; }
     public void setText(String text) { this.text = text; }
+    public String getExplanation() { return explanation; }
+    public void setExplanation(String explanation) { this.explanation = explanation; }
     public String getTopic() { return topic; }
     public void setTopic(String topic) { this.topic = topic; }
     public BigDecimal getMaxPoints() { return maxPoints; }
