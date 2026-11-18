@@ -47,6 +47,9 @@ echo ">> migrate"
 echo ">> verify"
 "${PSQL_CMD[@]}" "$URL" -v ON_ERROR_STOP=1 -f "$HERE/verify.sql"
 
+echo ">> link Midterm 1 to the question pool"
+"${PSQL_CMD[@]}" "$URL" -v ON_ERROR_STOP=1 -q -f "$HERE/link-midterm1.sql"
+
 echo ">> guard test: a second migrate run must fail loudly"
 if "${PSQL_CMD[@]}" "$URL" -v ON_ERROR_STOP=1 -q -f "$HERE/migrate.sql" >/dev/null 2>&1; then
   echo "ERROR: second migrate run did not fail" >&2; exit 1

@@ -74,6 +74,14 @@ docker compose exec -T db psql -U sis -d sis -v ON_ERROR_STOP=1 < ../migration/m
 docker compose exec -T db psql -U sis -d sis -v ON_ERROR_STOP=1 < ../migration/verify.sql
 ```
 
+After `verify.sql` passes, link SENG 403 "Midterm 1" to the pool questions it was drawn from (sets question text,
+topic = chapter title and `pool_question_id` for its 25 questions; refuses to run if the exam's answer key differs
+from the Form A key in the script):
+
+```bash
+psql "$DB" -v ON_ERROR_STOP=1 -f migration/link-midterm1.sql
+```
+
 `verify.sql` must end with `checks_failed = 0` and `all checks passed`. `migrate.sql` is atomic: if it errors,
 nothing was written; fix the cause and run it again. If it already committed and you must redo it:
 `docker compose down && docker volume rm sis_pg_data && docker compose up -d db app`, then repeat from step 3
