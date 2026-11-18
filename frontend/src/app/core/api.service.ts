@@ -43,6 +43,7 @@ export class ApiService {
   /* Student self-service */
   getMyAttendance(courseId: number | string) { return firstValueFrom(this.http.get<M.MyAttendanceDto[]>(`/api/courses/${courseId}/my-attendance`)); }
   getMyResults(courseId: number | string) { return firstValueFrom(this.http.get<M.MyResultDto[]>(`/api/courses/${courseId}/my-results`)); }
+  getMyResult(courseId: number | string, examId: number | string) { return firstValueFrom(this.http.get<M.MyResultDetailDto>(`/api/courses/${courseId}/my-results/${examId}`)); }
 
   /* Classrooms */
   getClassrooms() { return firstValueFrom(this.http.get<M.ClassroomDto[]>('/api/classrooms')); }
@@ -86,6 +87,7 @@ export class ApiService {
   createExam(courseId: number | string, e: M.ExamRequest) { return firstValueFrom(this.http.post<M.ExamDto>(`/api/courses/${courseId}/exams`, e)); }
   getExam(id: number | string) { return firstValueFrom(this.http.get<M.ExamDto>(`/api/exams/${id}`)); }
   updateExam(id: number | string, e: M.ExamRequest) { return firstValueFrom(this.http.put<M.ExamDto>(`/api/exams/${id}`, e)); }
+  publishExam(id: number | string, published: boolean) { return firstValueFrom(this.http.post<M.ExamDto | null>(`/api/exams/${id}/${published ? 'publish' : 'unpublish'}`, {})); }
   deleteExam(id: number | string) { return firstValueFrom(this.http.delete<void>(`/api/exams/${id}`)); }
   getExamResults(examId: number | string) { return firstValueFrom(this.http.get<M.ExamResultDto[]>(`/api/exams/${examId}/results`)); }
   saveExamResult(examId: number | string, studentNo: string, r: M.ExamResultRequest) { return firstValueFrom(this.http.put<M.ExamResultDto>(`/api/exams/${examId}/results/${encodeURIComponent(studentNo)}`, r)); }

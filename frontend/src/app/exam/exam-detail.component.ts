@@ -3,6 +3,8 @@ import { RouterLink } from '@angular/router';
 import { ApiService } from '../core/api.service';
 import { errorMessage } from '../shared/errors';
 import { ExamExportDialogComponent } from './exam-export-dialog.component';
+import { TopicChipsComponent } from '../shared/topics/topic-chips.component';
+import { apiTopics } from '../shared/topics/topic';
 import type { ExamAnalysisDto, ExamDto, ExamResultDto, RosterEntryDto } from '../core/api.models';
 import {
   barWidth, choiceBars, filterRows, formatExamDate, formatNumber, formatPercent, mergeRows, QUESTION_TYPE_LABELS,
@@ -11,7 +13,7 @@ import {
 
 @Component({
   selector: 'app-exam-detail',
-  imports: [RouterLink, ExamExportDialogComponent],
+  imports: [RouterLink, ExamExportDialogComponent, TopicChipsComponent],
   template: `
     <div class="container-wide">
       <nav class="breadcrumb" aria-label="Konum">
@@ -29,6 +31,14 @@ import {
             <div class="text-sm text-secondary">
               {{ formatExamDate(e.examDate) }} · {{ e.questions.length }} soru · toplam {{ fmt(e.totalPoints) }} puan
             </div>
+            <div class="publish flex-gap">
+              <span class="badge" [class.badge-success]="e.published" [class.badge-warning]="!e.published" role="status">
+                {{ e.published ? 'Öğrencilere açık' : 'Yayınlanmadı' }}
+              </span>
+              <button type="button" class="btn btn-sm" [class.btn-primary]="!e.published" [class.btn-outline]="e.published" [disabled]="publishing()" (click)="togglePublish(e)">
+                {{ e.published ? 'Yayından kaldır' : 'Öğrencilere yayınla' }}
+              </button>
+            </div>
           </div>
           <div class="flex-gap actions">
             <a class="btn btn-primary btn-sm" [routerLink]="['/t/exams', id(), 'entry']">Cevap gir</a>
@@ -41,6 +51,7 @@ import {
         <div class="tabs" role="tablist">
           <button role="tab" class="tab" [class.active]="tab() === 'results'" [attr.aria-selected]="tab() === 'results'" (click)="tab.set('results')">Sonuçlar</button>
           <button role="tab" class="tab" [class.active]="tab() === 'analysis'" [attr.aria-selected]="tab() === 'analysis'" (click)="tab.set('analysis')">Analiz</button>
+          <button role="tab" class="tab" [class.active]="tab() === 'questions'" [attr.aria-selected]="tab() === 'questions'" (click)="tab.set('questions')">Sorular</button>
         </div>
 
         @if (tab() === 'results') {
@@ -85,6 +96,30 @@ import {
                 </tbody>
               </table>
             </div>
+          }
+        }
+
+        @if (tab() === 'questions') {
+          @if (e.questions.length === 0) {
+            <p class="text-secondary">Bu sınavda soru yok.</p>
+          } @else {
+            @if (!anyTopics()) {
+              <p class="text-secondary hint">Sorulara henüz konu bağlanmadı. Konular sınav düzenleme ekranında seçilebilir; havuzdan gelen sorular havuz sorusunun konularını da taşır.</p>
+            }
+            <ol class="q-list">
+              @for (q of questionRows(); track q.id) {
+                <li class="q-item">
+                  <div class="q-meta">
+                    <strong>{{ q.position }}.</strong>
+                    <span class="text-sm text-secondary">{{ typeLabels[q.type] ?? q.type }} · {{ fmt(q.maxPoints) }} puan</span>
+                    @if (q.correctChoice) { <span class="badge badge-success">Anahtar: {{ q.correctChoice }}</span> }
+                    @if (q.poolQuestionId) { <span class="text-sm text-secondary">Havuz #{{ q.poolQuestionId }}</span> }
+                  </div>
+                  @if (q.text) { <div class="q-text">{{ q.text }}</div> }
+                  <app-topic-chips [topics]="q.topicList" />
+                </li>
+              }
+            </ol>
           }
         }
 
@@ -212,6 +247,11 @@ import {
   `,
   styles: [`
     .actions { flex-wrap: wrap; }
+    .publish { flex-wrap: wrap; margin-top: 6px; }
+    .q-list { list-style: none; margin: 0; padding: 0; }
+    .q-item { border: 1px solid var(--c-border); border-radius: var(--radius-md); background: var(--c-surface); padding: 10px 12px; margin-bottom: 8px; }
+    .q-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+    .q-text { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; max-height: 12em; overflow: auto; }
     .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--c-border); margin-bottom: var(--space-md); }
     .tab { background: none; border: none; border-bottom: 3px solid transparent; padding: 8px 16px; cursor: pointer; color: var(--c-text-secondary); font-weight: 500; }
     .tab.active { color: var(--c-primary); border-bottom-color: var(--c-primary); }
@@ -258,7 +298,10 @@ export class ExamDetailComponent implements OnInit {
   readonly analysis = signal<ExamAnalysisDto | null>(null);
   readonly error = signal('');
   readonly analysisError = signal('');
-  readonly tab = signal<'results' | 'analysis'>('results');
+  readonly tab = signal<'results' | 'analysis' | 'questions'>('results');
+  readonly publishing = signal(false);
+  readonly questionRows = computed(() => (this.exam()?.questions ?? []).map(q => ({ ...q, topicList: apiTopics(q.topics) })));
+  readonly anyTopics = computed(() => this.questionRows().some(q => q.topicList.length > 0));
   readonly showExport = signal(false);
   readonly query = signal('');
   readonly filter = signal<ResultFilter>('ALL');
@@ -310,6 +353,22 @@ export class ExamDetailComponent implements OnInit {
     this.analysisError.set('');
     try { this.analysis.set(await this.api.getExamAnalysis(this.id())); }
     catch (e) { this.analysisError.set(errorMessage(e)); }
+  }
+
+  /** Publish: students see their results and the answer key. The exam is read again for the server's state. */
+  async togglePublish(e: ExamDto) {
+    const publish = !e.published;
+    const question = publish
+      ? `"${e.title}" yayınlansın mı? Öğrenciler kendi sonuçlarını, cevaplarını ve cevap anahtarını görebilecek.`
+      : `"${e.title}" yayından kaldırılsın mı? Öğrenciler bu sınavın sonuçlarını artık göremeyecek.`;
+    if (!confirm(question)) return;
+    this.publishing.set(true);
+    this.error.set('');
+    try {
+      await this.api.publishExam(e.id, publish);
+      this.exam.set(await this.api.getExam(this.id()));
+    } catch (err) { this.error.set(errorMessage(err)); }
+    finally { this.publishing.set(false); }
   }
 
   async deleteResult(r: ResultRow) {

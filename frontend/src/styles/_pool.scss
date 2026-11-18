@@ -170,6 +170,22 @@
     h1, h2, h3, h4 { scroll-margin-top: 70px; }
   }
 
+  // Topics (numbered sections of a chapter text)
+  .topic-nav {
+    ol { margin: 6px 0 0; padding-left: 0; list-style: none; }
+    li { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; padding: 4px 0; border-top: 1px solid var(--qp-line); }
+    li:first-child { border-top: 0; }
+    button.link { text-align: left; padding: 2px 0; }
+    button.link.muted { color: var(--qp-muted); }
+  }
+  .filter-chip {
+    display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+    padding: 3px 4px 3px 12px; border-radius: 999px; font-size: 0.87rem;
+    background: var(--qp-blue-soft); color: var(--qp-blue); border: 1px solid var(--qp-blue);
+    button { border: 0; background: none; color: inherit; padding: 2px 8px; border-radius: 999px; line-height: 1; }
+  }
+  .topic-table { margin: 6px 0; }
+
   // AI-agent guide
   .agent-help {
     nav.card a { white-space: nowrap; }

@@ -31,6 +31,37 @@ export interface ChapterSummary {
   my_correct: number;
 }
 
+/* ---- topics: the numbered sections ("## N. Title") of a chapter text ---- */
+
+/** One topic of GET /api/pool/chapters/{id} (`topics`) and of POST …/staff/chapters/{id}/topics/sync. */
+export interface ChapterTopic {
+  id: number;
+  number: number;
+  title_en: string;
+  title_tr: string;
+}
+
+/** A topic linked to a pool question (`topics` of every single-question response and of the staff list). */
+export interface PoolTopicRef extends ChapterTopic {
+  chapter_id: number;
+  chapter_number: number;
+  chapter_title?: string;
+}
+
+/** GET /api/pool/courses/{courseId}/topics */
+export interface CourseTopic extends PoolTopicRef {
+  chapter_title: string;
+  question_count: number;
+}
+
+/** GET /api/pool/topics/{id}: the Markdown of the section; either language may be empty. */
+export interface TopicDetail extends PoolTopicRef {
+  course_id: number;
+  chapter_title: string;
+  content_en: string | null;
+  content_tr: string | null;
+}
+
 /** GET /api/pool/chapters/{id} */
 export interface ChapterDetail {
   id: number;
@@ -40,6 +71,7 @@ export interface ChapterDetail {
   doc_en: string;
   doc_tr: string;
   course_id?: number;
+  topics?: ChapterTopic[];
 }
 
 export interface ChapterRequest {
@@ -60,6 +92,7 @@ export interface QuestionListItem {
   attempted: boolean;
   my_correct: boolean | null;
   comments: number;
+  topics?: PoolTopicRef[];
 }
 
 /** The editable fields of a question (POST /questions, PUT /questions/{id}). */
@@ -76,13 +109,15 @@ export interface QuestionInput {
   rationale_c: string;
   rationale_d: string;
   reference: string;
+  /** Optional on create/update; omitted keeps the current links. */
+  topic_ids?: number[];
 }
 
 /**
  * GET /api/pool/questions/{id}. Before the first attempt (and when not the author/staff) `correct`, the rationales,
  * `explanation` and `my_selected` are absent; `revealed` tells which state it is.
  */
-export interface QuestionDetail extends Partial<Omit<QuestionInput, 'chapter_id'>> {
+export interface QuestionDetail extends Partial<Omit<QuestionInput, 'chapter_id' | 'topic_ids'>> {
   id: number;
   chapter_id: number;
   stem: string;
@@ -99,6 +134,8 @@ export interface QuestionDetail extends Partial<Omit<QuestionInput, 'chapter_id'
   instructor_note?: string | null;
   ai_status?: AiStatus;
   ai_review?: string | null;
+  /** Visible before the first attempt too. */
+  topics?: PoolTopicRef[];
 }
 
 /** GET /api/pool/courses/{courseId}/questions/mine */
@@ -153,6 +190,7 @@ export interface ReviewQuestion extends QuestionInput {
   ai_review: string | null;
   explanation: string | null;
   instructor_note: string | null;
+  topics?: PoolTopicRef[];
 }
 
 export interface StatusCount { status: QuestionStatus; count: number }

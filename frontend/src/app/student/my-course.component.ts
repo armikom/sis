@@ -51,8 +51,9 @@ import type { CourseDto, MyAttendanceDto, MyResultDto } from '../core/api.models
             @for (r of results(); track r.examId) {
               <tr>
                 <td>{{ r.examDate ? formatDay(r.examDate) : '' }}</td>
-                <td>{{ r.title }}</td>
+                <td><a [routerLink]="['/courses', id(), 'results', r.examId]">{{ r.title }}</a></td>
                 <td style="text-align:right"><strong>{{ r.points }}</strong> / {{ r.maxPoints }}</td>
+                <td style="text-align:right"><a class="btn btn-outline btn-sm" [routerLink]="['/courses', id(), 'results', r.examId]">{{ msg.myResult.detail }}</a></td>
               </tr>
             }
           </tbody>

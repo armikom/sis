@@ -2,15 +2,19 @@ import { Component, computed, inject, input, OnInit, signal } from '@angular/cor
 import { Router, RouterLink } from '@angular/router';
 import { ApiService } from '../core/api.service';
 import { errorMessage } from '../shared/errors';
+import { PoolApiService } from '../pool/pool-api.service';
+import { TopicChipsComponent } from '../shared/topics/topic-chips.component';
+import { TopicPickerComponent } from '../shared/topics/topic-picker.component';
+import { apiTopics, poolTopics, Topic } from '../shared/topics/topic';
 import type { ExamDto, QuestionType } from '../core/api.models';
 import {
   LETTERS, MAX_QUESTIONS, TYPE_LABELS, QuestionDraft, applyKey, bulkRows, buildRequest, destructiveChanges, fromDto,
-  keyString, moveRow, newRow, topicsOf, totalPoints, validate, validChoiceCount,
+  inheritedTopics, keyString, moveRow, newRow, topicsOf, totalPoints, validate, validChoiceCount,
 } from './exam-edit.logic';
 
 @Component({
   selector: 'app-exam-edit',
-  imports: [RouterLink],
+  imports: [RouterLink, TopicChipsComponent, TopicPickerComponent],
   template: `
     <div class="container">
       <nav class="breadcrumb" aria-label="Konum">
@@ -106,7 +110,7 @@ import {
         <div class="q-table">
           <table>
             <thead>
-              <tr><th>#</th><th>Tür</th><th>Konu</th><th>Puan</th><th>Seçenek</th><th>Doğru</th><th><span class="sr-only">İşlemler</span></th></tr>
+              <tr><th>#</th><th>Tür</th><th>Konu</th>@if (hasTopics()) { <th>Bölüm konuları</th> }<th>Puan</th><th>Seçenek</th><th>Doğru</th><th><span class="sr-only">İşlemler</span></th></tr>
             </thead>
             <tbody>
               @for (r of rows(); track r.key; let i = $index) {
@@ -118,6 +122,12 @@ import {
                     </select>
                   </td>
                   <td><input class="form-input" list="exam-topics" maxlength="120" [attr.aria-label]="'Soru ' + (i + 1) + ' konusu'" [value]="r.topic" (input)="patch(r.key, { topic: $any($event.target).value })" /></td>
+                  @if (hasTopics()) {
+                    <td>
+                      <button class="btn btn-outline btn-sm topics-btn" type="button" (click)="toggleTopics(r.key)" [attr.aria-expanded]="topicsOpen().has(r.key)"
+                        [attr.aria-label]="'Soru ' + (i + 1) + ' bölüm konuları'">{{ r.topicIds.length + inherited(r).length }} konu</button>
+                    </td>
+                  }
                   <td><input class="form-input num" type="number" min="0" step="any" [attr.aria-label]="'Soru ' + (i + 1) + ' puanı'" [value]="r.maxPoints ?? ''" (input)="setPoints(r.key, $any($event.target).value)" /></td>
                   <td>
                     @if (r.type === 'CHOICE') {
@@ -141,10 +151,23 @@ import {
                     <button class="btn-icon text-danger" type="button" (click)="remove(r.key)" [attr.aria-label]="'Soru ' + (i + 1) + ' sil'">✕</button>
                   </td>
                 </tr>
+                @if (hasTopics() && topicsOpen().has(r.key)) {
+                  <tr class="text-row">
+                    <td></td>
+                    <td [attr.colspan]="7">
+                      @if (inherited(r).length) {
+                        <div class="text-sm text-secondary">Havuz sorusundan gelen konular:</div>
+                        <app-topic-chips [topics]="inheritedList(r)" />
+                      }
+                      <app-topic-picker [topics]="courseTopics()" [selected]="r.topicIds" (selectedChange)="patch(r.key, { topicIds: $event })"
+                        [label]="'Soru ' + (i + 1) + ' bölüm konuları'" />
+                    </td>
+                  </tr>
+                }
                 @if (expanded().has(r.key)) {
                   <tr class="text-row">
                     <td></td>
-                    <td colspan="6">
+                    <td [attr.colspan]="hasTopics() ? 7 : 6">
                       <textarea class="form-input" rows="2" maxlength="2000" [attr.aria-label]="'Soru ' + (i + 1) + ' metni'" placeholder="Soru metni (isteğe bağlı)" [value]="r.text" (input)="patch(r.key, { text: $any($event.target).value })"></textarea>
                     </td>
                   </tr>
@@ -178,12 +201,14 @@ import {
     .q-table .num { width: 76px; }
     .q-table .actions { white-space: nowrap; text-align: right; }
     .text-row textarea { width: 100%; }
+    .topics-btn { white-space: nowrap; }
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   `],
 })
 export class ExamEditComponent implements OnInit {
   private readonly api = inject(ApiService);
   private readonly router = inject(Router);
+  private readonly poolApi = inject(PoolApiService);
 
   readonly id = input<string>();
   readonly courseId = input<string>();
@@ -204,6 +229,10 @@ export class ExamEditComponent implements OnInit {
   readonly examDate = signal('');
   readonly rows = signal<QuestionDraft[]>([]);
   readonly expanded = signal<ReadonlySet<number>>(new Set());
+  readonly topicsOpen = signal<ReadonlySet<number>>(new Set());
+  /** Chapter topics of the course; empty (and the topic column hidden) when the course has no pool chapters. */
+  readonly courseTopics = signal<Topic[]>([]);
+  readonly hasTopics = computed(() => this.courseTopics().length > 0);
 
   readonly bulkCount = signal(25);
   readonly bulkType = signal<QuestionType>('CHOICE');
@@ -242,7 +271,22 @@ export class ExamEditComponent implements OnInit {
         return;
       }
       this.loaded.set(true);
+      this.loadTopics();
     } catch (e) { this.error.set(errorMessage(e)); }
+  }
+
+  /** Quietly: courses without a pool (404/409) or without chapters just have no topic column. */
+  private loadTopics() {
+    const cid = this.courseIdValue();
+    if (!cid) return;
+    this.poolApi.courseTopics(cid).then(list => this.courseTopics.set(poolTopics(list)), () => this.courseTopics.set([]));
+  }
+
+  inherited(r: QuestionDraft) { return inheritedTopics(r); }
+  inheritedList(r: QuestionDraft) { return apiTopics(inheritedTopics(r)); }
+
+  toggleTopics(key: number) {
+    this.topicsOpen.update(s => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
   }
 
   lettersFor(r: QuestionDraft) { return LETTERS.slice(0, r.choiceCount); }

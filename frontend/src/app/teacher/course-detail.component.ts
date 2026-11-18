@@ -186,6 +186,7 @@ import type { CourseDto, ExamSummaryDto, RosterEntryDto, RosterImportResult, Ses
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
             <div>
               <strong>{{ x.title }}</strong>
+              @if (x.published) { <span class="badge badge-success" style="margin-left:6px">Öğrencilere açık</span> }
               <div class="text-sm text-secondary">{{ x.examDate ? formatExamDate(x.examDate) : 'Tarih yok' }} · {{ x.questionCount }} soru · {{ x.totalPoints }} puan</div>
             </div>
             <div class="text-sm text-secondary" style="text-align:right">

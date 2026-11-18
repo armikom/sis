@@ -7,20 +7,22 @@ import { PM } from './pool-messages';
 import { LETTERS } from './pool-util';
 import type { ChapterDetail, Letter, QuestionInput } from './pool.models';
 import { errorMessage } from '../shared/errors';
+import { TopicPickerComponent } from '../shared/topics/topic-picker.component';
+import { poolTopics, Topic } from '../shared/topics/topic';
 
-type TextField = Exclude<keyof QuestionInput, 'chapter_id' | 'correct'>;
+type TextField = Exclude<keyof QuestionInput, 'chapter_id' | 'correct' | 'topic_ids'>;
 
 function emptyForm(chapterId: number | null): QuestionInput {
   return {
     chapter_id: chapterId, stem: '', option_a: '', option_b: '', option_c: '', option_d: '', correct: '',
-    rationale_a: '', rationale_b: '', rationale_c: '', rationale_d: '', reference: '',
+    rationale_a: '', rationale_b: '', rationale_c: '', rationale_d: '', reference: '', topic_ids: [],
   };
 }
 
 /** Write a question (…/chapters/:chapterId/new) or change one (…/questions/:id/edit). */
 @Component({
   selector: 'app-pool-question-form',
-  imports: [FormsModule, RouterLink],
+  imports: [FormsModule, RouterLink, TopicPickerComponent],
   template: `
     <p class="small">
       @if (id()) { <a [routerLink]="[ctx.base(), 'questions', id()]">{{ pm.back }}</a> }
@@ -64,6 +66,11 @@ function emptyForm(chapterId: number | null): QuestionInput {
         <label for="reference">{{ pm.reference }} <span class="hint">{{ pm.referenceHint }}</span></label>
         <input id="reference" name="reference" type="text" [(ngModel)]="form.reference" maxlength="200" required />
 
+        @if (courseTopics().length) {
+          <label id="topics-label">{{ pm.topics }} <span class="hint">{{ pm.topicsHint }}</span></label>
+          <app-topic-picker [topics]="courseTopics()" [(selected)]="topicIds" [firstChapterId]="form.chapter_id" [label]="pm.topics" />
+        }
+
         @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
         <p class="row">
           <button type="submit" class="primary" [disabled]="busy()">{{ id() ? pm.save : pm.send }}</button>
@@ -91,6 +98,9 @@ export class QuestionFormComponent {
   readonly error = signal('');
   readonly busy = signal(false);
   readonly ready = signal(false);
+  /** All topics of the course (GET …/topics); empty when the course has none or the request fails. */
+  readonly courseTopics = signal<Topic[]>([]);
+  readonly topicIds = signal<number[]>([]);
 
   constructor() {
     effect(() => {
@@ -102,17 +112,20 @@ export class QuestionFormComponent {
 
   private async load(id: string | undefined, chapterId: number | null) {
     this.form = emptyForm(chapterId);
+    this.topicIds.set([]);
     this.ready.set(!id);
     this.error.set('');
+    this.api.courseTopics(this.ctx.courseId()).then(list => this.courseTopics.set(poolTopics(list)), () => this.courseTopics.set([]));
     try {
       if (id) {
         const q = await this.api.question(id);
         const f = emptyForm(q.chapter_id);
         for (const key of Object.keys(f) as (keyof QuestionInput)[]) {
           const v = q[key as keyof typeof q];
-          if (key !== 'chapter_id') (f as unknown as Record<string, unknown>)[key] = v ?? '';
+          if (key !== 'chapter_id' && key !== 'topic_ids') (f as unknown as Record<string, unknown>)[key] = v ?? '';
         }
         this.form = f;
+        this.topicIds.set((q.topics ?? []).map(t => t.id));
         this.ready.set(true);
       }
       if (this.form.chapter_id) this.chapter.set(await this.api.chapter(this.form.chapter_id));
@@ -135,6 +148,9 @@ export class QuestionFormComponent {
     try {
       let id: string | number | undefined = this.id();
       const courseId = this.ctx.courseId();
+      // Only when the picker was shown: otherwise the current links stay as they are.
+      if (this.courseTopics().length) this.form.topic_ids = this.topicIds();
+      else delete this.form.topic_ids;
       if (!id) id = (await this.api.createQuestion(this.form)).id;
       else if (this.ctx.staff()) await this.api.staffUpdateQuestion(courseId, id, this.form);
       else await this.api.updateQuestion(id, this.form);

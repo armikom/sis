@@ -22,7 +22,18 @@ export class PoolApiService {
   /* Chapters */
   chapters(courseId: Id) { return this.get<P.ChapterSummary[]>(`/api/pool/courses/${courseId}/chapters`); }
   chapter(id: Id) { return this.get<P.ChapterDetail>(`/api/pool/chapters/${id}`); }
-  chapterQuestions(chapterId: Id) { return this.get<P.QuestionListItem[]>(`/api/pool/chapters/${chapterId}/questions`); }
+  chapterQuestions(chapterId: Id, topicId?: Id | null) {
+    return this.get<P.QuestionListItem[]>(`/api/pool/chapters/${chapterId}/questions`, topicId ? { topic_id: String(topicId) } : undefined);
+  }
+
+  /* Topics */
+  courseTopics(courseId: Id) { return this.get<P.CourseTopic[]>(`/api/pool/courses/${courseId}/topics`); }
+  topic(id: Id) { return this.get<P.TopicDetail>(`/api/pool/topics/${id}`); }
+  syncTopics(courseId: Id, chapterId: Id) { return this.post<P.ChapterTopic[]>(this.staff(courseId, `chapters/${chapterId}/topics/sync`)); }
+  /** The response shape is not fixed by the contract: the topics, or the question with `topics`. */
+  setQuestionTopics(courseId: Id, questionId: Id, topicIds: number[]) {
+    return this.put<P.PoolTopicRef[] | { topics?: P.PoolTopicRef[] } | null>(this.staff(courseId, `questions/${questionId}/topics`), { topic_ids: topicIds });
+  }
 
   /* Questions */
   myQuestions(courseId: Id) { return this.get<P.MyQuestion[]>(`/api/pool/courses/${courseId}/questions/mine`); }
@@ -38,9 +49,10 @@ export class PoolApiService {
   }
 
   /* Staff */
-  staffQuestions(courseId: Id, status: string, chapterId?: Id | null) {
+  staffQuestions(courseId: Id, status: string, chapterId?: Id | null, topicId?: Id | null) {
     const params: Record<string, string> = { status };
     if (chapterId) params['chapter_id'] = String(chapterId);
+    if (topicId) params['topic_id'] = String(topicId);
     return this.get<P.ReviewQuestion[]>(this.staff(courseId, 'questions'), params);
   }
   questionCounts(courseId: Id) { return this.get<P.StatusCount[]>(this.staff(courseId, 'questions/counts')); }

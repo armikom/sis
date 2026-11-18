@@ -43,6 +43,19 @@ export interface PersonRequest {
 }
 export interface MyAttendanceDto { sessionId: number; title: string; date: string; present: boolean; }
 export interface MyResultDto { examId: number; title: string; examDate: string | null; points: number; maxPoints: number; }
+/** A chapter topic as the camelCase endpoints send it (exam questions, my results). Pool endpoints: pool.models.ts. */
+export interface TopicDto {
+  id: number; chapterId: number; chapterNumber: number; chapterTitle?: string | null; number: number;
+  titleEn: string | null; titleTr: string | null;
+}
+export interface MyResultQuestionDto {
+  position: number; text: string | null; type: QuestionType; myAnswer: string | null; correctChoice: string | null;
+  /** null: not a choice question (or not graded as right/wrong). */
+  correct: boolean | null; points: number | null; maxPoints: number; topics?: TopicDto[];
+}
+export interface ReviewTopicDto { topic: TopicDto; missed: number; total: number; }
+/** GET /api/courses/{id}/my-results/{examId} (published exams only; 404 otherwise). */
+export interface MyResultDetailDto extends MyResultDto { questions: MyResultQuestionDto[]; reviewTopics: ReviewTopicDto[]; }
 
 export interface ClassroomDto { id: number; name: string; latitude?: number; longitude?: number; radiusM?: number; bleBeaconId?: string; hasBleKey: boolean; }
 export interface BleKeyResult { beaconId: string; keyHex: string; }
@@ -109,19 +122,25 @@ export type QuestionType = 'CHOICE' | 'OPEN' | 'FREE';
 export interface QuestionDto {
   id: number; position: number; type: QuestionType; text: string | null; topic: string | null;
   maxPoints: number; choiceCount: number | null; correctChoice: string | null; poolQuestionId?: number | null;
+  /** Explicitly linked chapter topics (editable). */
+  topicIds?: number[];
+  /** Effective topics: the explicit ones plus the linked pool question's (read-only). */
+  topics?: TopicDto[];
 }
 export interface QuestionRequest {
   id?: number | null; type: QuestionType; text?: string | null; topic?: string | null;
-  maxPoints: number; choiceCount?: number | null; correctChoice?: string | null;
+  maxPoints: number; choiceCount?: number | null; correctChoice?: string | null; topicIds?: number[];
 }
 export interface ExamDto {
   id: number; courseId: number; courseCode: string; courseName: string; title: string;
   examDate: string | null; forms?: number; seed?: number | null;
   totalPoints: number; resultCount: number; createdAt: string; questions: QuestionDto[];
+  /** Students see their results (and the answer key) only when published. */
+  published?: boolean;
 }
 export interface ExamSummaryDto {
   id: number; courseId: number; title: string; examDate: string | null; questionCount: number;
-  totalPoints: number; resultCount: number; averagePoints: number | null; createdAt: string;
+  totalPoints: number; resultCount: number; averagePoints: number | null; createdAt: string; published?: boolean;
 }
 export interface ExamRequest { title: string; examDate?: string | null; questions: QuestionRequest[]; }
 export interface ExamAnswerDto { questionId: number; answer: string | null; points: number | null; }

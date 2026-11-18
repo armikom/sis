@@ -33,6 +33,7 @@ export const routes: Routes = [
     children: [
       { path: '', loadComponent: () => import('./student/my-courses.component').then(m => m.MyCoursesComponent) },
       { path: ':id', loadComponent: () => import('./student/my-course.component').then(m => m.MyCourseComponent) },
+      { path: ':id/results/:examId', loadComponent: () => import('./student/my-result.component').then(m => m.MyResultComponent) },
     ],
   },
   // Projection view: full screen, no teacher shell/menu (06 §3).

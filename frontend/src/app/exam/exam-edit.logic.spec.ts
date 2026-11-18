@@ -74,8 +74,8 @@ describe('buildRequest', () => {
     ]);
     expect(req.title).toBe('Vize');
     expect(req.examDate).toBeNull();
-    expect(req.questions[0]).toEqual({ id: 12, type: 'CHOICE', text: null, topic: 'Türev', maxPoints: 4, choiceCount: 4, correctChoice: 'B' });
-    expect(req.questions[1]).toEqual({ type: 'OPEN', text: null, topic: null, maxPoints: 10, choiceCount: null, correctChoice: null });
+    expect(req.questions[0]).toEqual({ id: 12, type: 'CHOICE', text: null, topic: 'Türev', maxPoints: 4, choiceCount: 4, correctChoice: 'B', topicIds: [] });
+    expect(req.questions[1]).toEqual({ type: 'OPEN', text: null, topic: null, maxPoints: 10, choiceCount: null, correctChoice: null, topicIds: [] });
   });
 });
 

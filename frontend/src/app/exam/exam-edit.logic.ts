@@ -1,4 +1,4 @@
-import type { ExamRequest, QuestionDto, QuestionRequest, QuestionType } from '../core/api.models';
+import type { ExamRequest, QuestionDto, QuestionRequest, QuestionType, TopicDto } from '../core/api.models';
 
 /** Editable question row (docs/11-EXAMS.md §3.3). `key` is a stable client-side track id. */
 export interface QuestionDraft {
@@ -10,6 +10,10 @@ export interface QuestionDraft {
   maxPoints: number | null;
   choiceCount: number;
   correctChoice: string | null;
+  /** Explicitly linked chapter topics (sent as `topicIds`). */
+  topicIds: number[];
+  /** Effective topics as last loaded (explicit + the linked pool question's); read-only. */
+  effectiveTopics: TopicDto[];
 }
 
 export interface BulkOptions { count: number; type: QuestionType; choiceCount: number; points: number; topic: string; }
@@ -23,13 +27,17 @@ let nextKey = 1;
 export function newKey(): number { return nextKey++; }
 
 export function newRow(partial: Partial<QuestionDraft> = {}): QuestionDraft {
-  return { key: newKey(), id: null, type: 'CHOICE', topic: '', text: '', maxPoints: 4, choiceCount: 4, correctChoice: null, ...partial };
+  return {
+    key: newKey(), id: null, type: 'CHOICE', topic: '', text: '', maxPoints: 4, choiceCount: 4, correctChoice: null,
+    topicIds: [], effectiveTopics: [], ...partial,
+  };
 }
 
 export function fromDto(q: QuestionDto): QuestionDraft {
   return {
     key: newKey(), id: q.id, type: q.type, topic: q.topic ?? '', text: q.text ?? '', maxPoints: q.maxPoints,
     choiceCount: q.choiceCount ?? 4, correctChoice: q.type === 'CHOICE' ? q.correctChoice : null,
+    topicIds: Array.isArray(q.topicIds) ? [...q.topicIds] : [], effectiveTopics: Array.isArray(q.topics) ? q.topics : [],
   };
 }
 
@@ -128,6 +136,7 @@ export function buildRequest(title: string, examDate: string, rows: QuestionDraf
       maxPoints: r.maxPoints ?? 0,
       choiceCount: choice ? r.choiceCount : null,
       correctChoice: choice ? r.correctChoice : null,
+      topicIds: r.topicIds,
     };
   });
   return { title: title.trim(), examDate: examDate || null, questions };
@@ -145,6 +154,11 @@ export function destructiveChanges(original: QuestionDto[], rows: QuestionDraft[
     else if (r.type !== q.type) typeChanged++;
   }
   return { removed, typeChanged };
+}
+
+/** Effective topics of a row that come from its pool question, not from its explicit `topicIds`. */
+export function inheritedTopics(r: QuestionDraft): TopicDto[] {
+  return r.effectiveTopics.filter(t => !r.topicIds.includes(t.id));
 }
 
 /** Distinct non-empty trimmed topics in first-use order. */

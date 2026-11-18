@@ -56,6 +56,8 @@ export const PM = {
     wrote: (m: number, n: number) => `You wrote ${m} of ${n} questions for this chapter.`,
     closed: 'This chapter is closed for new questions.',
     readFirst: 'Read the list before you write, so you do not ask the same thing again.',
+    topicsTitle: 'Topics in this chapter / Bu bölümün konuları', topicQuestions: 'Questions / Sorular',
+    filteredBy: 'Topic / Konu:', clearFilter: 'Show all questions / Tüm sorular',
     empty: 'No questions here yet.', by: 'by', notAnswered: 'Not answered', right: '✓ Correct', wrong: '✗ Wrong',
   },
   form: {
@@ -66,6 +68,7 @@ export const PM = {
     reference: 'Where is this in the course?', referenceHint: 'For example: "Week 7, slide 12" or the section name in the chapter text',
     save: 'Save changes', send: 'Send the question',
     after: 'After you send it, an automatic check gives you feedback. Then the instructor approves it.',
+    topics: 'Topics / Konular', topicsHint: '(optional) the sections of the chapter text that the question asks about',
   },
   question: {
     back: '← Questions of this chapter', mine: 'Mine', by: 'by',
@@ -80,7 +83,7 @@ export const PM = {
     explanation: 'Explanation', explanationBy: '(written by AI from the chapter text)',
     next: 'Next question →', change: 'Change', delete: 'Delete', report: 'Report a problem',
     thanks: 'Thank you. The instructor will look at it.',
-    deleteConfirm: 'Delete this question? You cannot undo this.',
+    deleteConfirm: 'Delete this question? You cannot undo this.', topics: 'Topics / Konular',
     flagPrompt: 'What is wrong with this question? (for example: the marked answer is wrong, two options are correct)',
   },
   mine: {
@@ -96,6 +99,7 @@ export const PM = {
     explanation: 'AI explanation shown to students:', lastNote: 'Your last note:',
     notePlaceholder: "Note for the student (needed for 'Send back' and 'Reject')",
     approve: 'Approve', sendBack: 'Send back', reject: 'Reject', editText: 'Edit text', open: 'Open',
+    topics: 'Topics:', noTopics: 'No topics linked.', editTopics: 'Edit topics', saveTopics: 'Save topics', cancel: 'Cancel',
     rerunCheck: 'Run check again', rerunExplain: 'Write explanation again',
   },
   students: {
@@ -120,6 +124,10 @@ export const PM = {
     en: 'English text', tr: 'Turkish text', save: 'Save', saved: 'Saved.',
     delete: 'Delete chapter / Bölümü sil',
     deleteConfirm: (t: string) => `Delete the chapter "${t}"? / "${t}" bölümü silinsin mi?`,
+    topics: (n: number) => `Topics (${n}) / Konular`, noTopics: 'No topics yet. / Henüz konu yok.',
+    topicsHint: 'Topics come from the numbered "## N. Title" headings of the chapter texts. / Konular bölüm metinlerindeki numaralı "## N. Başlık" başlıklarından gelir.',
+    sync: 'Sync from headings / Başlıklardan güncelle', synced: (n: number) => `${n} topics. / ${n} konu.`,
+    topicNo: 'No', topicEn: 'English title', topicTr: 'Türkçe başlık',
     newTitle: 'Add a chapter / Bölüm ekle', create: 'Add / Ekle', empty: 'No chapters yet. / Henüz bölüm yok.',
   },
   flags: {

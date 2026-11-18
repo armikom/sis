@@ -9,6 +9,8 @@ import { StatusBadgeComponent } from './components/status-badge.component';
 import { AiReviewComponent } from './components/ai-review.component';
 import { ThreadComponent } from './components/thread.component';
 import { errorMessage } from '../shared/errors';
+import { TopicChipsComponent } from '../shared/topics/topic-chips.component';
+import { poolTopics } from '../shared/topics/topic';
 
 /**
  * One question. Attempt first: the key, the reasons and the discussion appear only after the first answer, and only
@@ -16,7 +18,7 @@ import { errorMessage } from '../shared/errors';
  */
 @Component({
   selector: 'app-pool-question-view',
-  imports: [RouterLink, StatusBadgeComponent, AiReviewComponent, ThreadComponent],
+  imports: [RouterLink, StatusBadgeComponent, AiReviewComponent, ThreadComponent, TopicChipsComponent],
   template: `
     @if (error()) { <p class="error" role="alert">{{ error() }}</p> }
     @if (q(); as q) {
@@ -27,6 +29,7 @@ import { errorMessage } from '../shared/errors';
         @if (q.mine || ctx.staff()) { <pool-status-badge [status]="q.status" /> }
       </div>
       <h1 class="pre">{{ q.stem }}</h1>
+      <app-topic-chips [topics]="topics()" [label]="pm.topics" />
 
       <!-- Author: feedback and next steps -->
       @if (q.mine) {
@@ -114,6 +117,7 @@ export class QuestionViewComponent implements OnDestroy {
   readonly flagged = signal(false);
   private timer: ReturnType<typeof setTimeout> | undefined;
 
+  readonly topics = computed(() => poolTopics(this.q()?.topics));
   readonly editable = computed(() => {
     const q = this.q();
     return this.ctx.staff() || (!!q?.mine && (q.status === 'PENDING' || q.status === 'NEEDS_REVISION'));
