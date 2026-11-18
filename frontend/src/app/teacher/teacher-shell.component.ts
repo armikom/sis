@@ -16,6 +16,7 @@ import { MSG } from '../shared/messages';
           @if (auth.isAdmin()) {
             <a routerLink="/t/admin/people" routerLinkActive="active" ariaCurrentWhenActive="page">{{ msg.nav.admin }}</a>
           }
+          <a routerLink="/agent" routerLinkActive="active" ariaCurrentWhenActive="page">{{ msg.nav.agent }}</a>
           @if (hasStudentCourses()) { <a routerLink="/courses">{{ msg.nav.myCourses }}</a> }
           @if (auth.user(); as u) { <span class="nav-user" [title]="u.email ?? u.username ?? ''">{{ u.fullName }}</span> }
           <a href="#" (click)="doLogout($event)">{{ msg.nav.logout }}</a>

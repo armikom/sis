@@ -10,7 +10,7 @@ export const MSG = {
     verifying: 'Giriş yapılıyor…', verifyFailed: 'Bu bağlantı artık geçerli değil. Yeni bir bağlantı isteyin.',
     newLink: 'Yeni bağlantı iste', checkin: 'Yoklamaya katıl (kod ile)',
   },
-  nav: { courses: 'Dersler', classrooms: 'Derslikler', admin: 'Kişiler', logout: 'Çıkış', myCourses: 'Derslerim', staffArea: 'Ders yönetimi' },
+  nav: { courses: 'Dersler', classrooms: 'Derslikler', admin: 'Kişiler', logout: 'Çıkış', myCourses: 'Derslerim', staffArea: 'Ders yönetimi', agent: 'AI agent' },
   courses: {
     title: 'Dersler', create: 'Yeni ders', code: 'Ders kodu', name: 'Ders adı', term: 'Dönem', roster: 'Öğrenci listesi',
     sessions: 'Oturumlar', students: 'öğrenci', noData: 'Henüz ders eklenmedi.',
@@ -72,7 +72,7 @@ export const MSG = {
   my: {
     title: 'Derslerim', noCourses: 'Kayıtlı olduğunuz ders yok.', attendance: 'Yoklamalarım', results: 'Sınav sonuçlarım',
     present: 'Katıldı', absent: 'Katılmadı', noSessions: 'Henüz yoklama yapılmadı.', noResults: 'Henüz sınav sonucu yok.',
-    pool: 'Soru havuzu', summary: (p: number, t: number) => `${t} yoklamanın ${p} tanesine katıldınız.`,
+    pool: 'Soru havuzu / Question pool', summary: (p: number, t: number) => `${t} yoklamanın ${p} tanesine katıldınız.`,
   },
   student: {
     enterCode: 'Yoklama kodunu girin', codeLabel: 'Katılım Kodu', codePlaceholder: '6 haneli kod',

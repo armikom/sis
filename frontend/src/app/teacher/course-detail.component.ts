@@ -25,6 +25,9 @@ import type { CourseDto, ExamSummaryDto, RosterEntryDto, RosterImportResult, Ses
         </div>
         <div class="flex-gap" style="flex-wrap:wrap">
           <button class="btn btn-outline btn-sm" (click)="toggleSettings()">{{ msg.settings.title }}</button>
+          @if (course()?.poolEnabled) {
+            <a class="btn btn-outline btn-sm" [routerLink]="['/courses', id(), 'pool']">{{ msg.my.pool }}</a>
+          }
           <a class="btn btn-primary" [routerLink]="['/t/sessions/new']" [queryParams]="{ courseId: id() }">{{ msg.sessions.create }}</a>
           @if (course()?.owner) {
             <button class="btn btn-outline btn-sm" (click)="toggleArchive()">{{ course()?.archived ? msg.settings.unarchive : msg.settings.archive }}</button>

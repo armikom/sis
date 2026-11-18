@@ -14,7 +14,7 @@ export const apiErrorInterceptor: HttpInterceptorFn = (req, next) => {
       if (err.status === 401 && req.url.startsWith('/api/') && !req.url.startsWith('/api/public/')
           && !req.url.startsWith('/api/auth/')) {
         const path = typeof window !== 'undefined' ? window.location.pathname : '';
-        if (path.startsWith('/t') || path.startsWith('/courses')) {
+        if (path.startsWith('/t') || path.startsWith('/courses') || path.startsWith('/agent')) {
           router.navigateByUrl('/login');
         }
       }

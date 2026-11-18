@@ -1,11 +1,12 @@
 import { Routes } from '@angular/router';
 import { HomeComponent } from './student/home.component';
 import { authGuard, adminGuard, staffGuard } from './core/auth.guard';
+import { POOL_ROUTES } from './pool/pool.routes';
 
 /*
  * Adding a route: staff screens go under 't' (staffGuard; menu in teacher/teacher-shell.component.ts),
  * signed-in student screens under 'courses' (authGuard; menu in student/student-shell.component.ts),
- * system-admin screens under 't/admin' with adminGuard. Check-in ('', 'c/:code', 'q/:token') stays public.
+ * system-admin screens under 't/admin' with adminGuard. Question-pool screens: pool/pool.routes.ts. Check-in ('', 'c/:code', 'q/:token') stays public.
  */
 export const routes: Routes = [
   { path: '', component: HomeComponent },
@@ -14,6 +15,17 @@ export const routes: Routes = [
   { path: 'login', loadComponent: () => import('./auth/login.component').then(m => m.LoginComponent) },
   { path: 'login/verify', loadComponent: () => import('./auth/verify.component').then(m => m.VerifyComponent) },
   { path: 't/login', redirectTo: 'login', pathMatch: 'full' },
+  // Question pool (/courses/:courseId/pool…): own layout for students and staff, so it sits before 'courses'.
+  ...POOL_ROUTES,
+  {
+    path: 'agent',
+    loadComponent: () => import('./agent/agent-shell.component').then(m => m.AgentShellComponent),
+    canActivate: [authGuard],
+    children: [
+      { path: '', loadComponent: () => import('./agent/agent.component').then(m => m.AgentComponent) },
+      { path: 'help', loadComponent: () => import('./agent/agent-help.component').then(m => m.AgentHelpComponent) },
+    ],
+  },
   {
     path: 'courses',
     loadComponent: () => import('./student/student-shell.component').then(m => m.StudentShellComponent),
@@ -21,7 +33,6 @@ export const routes: Routes = [
     children: [
       { path: '', loadComponent: () => import('./student/my-courses.component').then(m => m.MyCoursesComponent) },
       { path: ':id', loadComponent: () => import('./student/my-course.component').then(m => m.MyCourseComponent) },
-      // ':id/pool' is added by the question-pool module.
     ],
   },
   // Projection view: full screen, no teacher shell/menu (06 §3).

@@ -1,0 +1,208 @@
+// Question-pool layout (pool/*, agent/*), ported from question-pool's style.css. Everything is scoped under
+// .pool-app so the attendance screens keep their look; colours come from the SIS tokens where one exists.
+// Global (not component) styles because the shell's rules must reach the routed child screens.
+
+.pool-app {
+  --qp-card: var(--c-surface);
+  --qp-line: var(--c-border);
+  --qp-muted: var(--c-text-secondary);
+  --qp-green: var(--c-success);
+  --qp-green-soft: var(--c-success-light);
+  --qp-red: var(--c-danger);
+  --qp-red-soft: var(--c-danger-light);
+  --qp-amber: #b97a0c;
+  --qp-amber-soft: var(--c-warning-light);
+  --qp-blue: var(--c-primary);
+  --qp-blue-soft: var(--c-primary-light);
+  --qp-purple: #6d4fa0;
+
+  line-height: 1.5;
+
+  .pool-brand { font-weight: 400; opacity: 0.9; margin-left: 4px; }
+  .pool-topbar { position: sticky; top: 0; z-index: 5; }
+
+  .pool-main { width: 100%; max-width: 860px; margin: 0 auto; padding: 16px 14px 60px; }
+
+  h1 { font-size: 1.45rem; margin: 8px 0 12px; line-height: 1.25; }
+  h2 { font-size: 1.15rem; margin: 22px 0 8px; }
+  h3 { font-size: 1rem; margin: 14px 0 6px; }
+  p { margin: 8px 0; }
+  .flush { margin: 0; }
+  .muted { color: var(--qp-muted); }
+  .small { font-size: 0.87rem; }
+  .mt-sm { margin-top: 8px; }
+  .mt-md { margin-top: 12px; }
+
+  .card {
+    display: block;
+    background: var(--qp-card);
+    border: 1px solid var(--qp-line);
+    border-radius: var(--radius-md);
+    box-shadow: none;
+    padding: 14px;
+    margin: 10px 0;
+  }
+  a.card { color: inherit; text-decoration: none; }
+  a.card:hover { border-color: var(--qp-blue); text-decoration: none; }
+
+  .row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+  .spread { justify-content: space-between; }
+  .grow { flex: 1; min-width: 0; }
+  .actions { margin: 14px 0; }
+
+  button, .btn {
+    font: inherit;
+    font-weight: 400;
+    padding: 9px 16px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--qp-line);
+    background: var(--qp-card);
+    color: var(--c-text);
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+    line-height: 1.3;
+  }
+  button:hover:not(:disabled), .btn:hover { border-color: var(--qp-blue); text-decoration: none; }
+  button.primary, .btn.primary { background: var(--c-primary); border-color: var(--c-primary); color: #fff; font-weight: 600; }
+  button.primary:hover:not(:disabled), .btn.primary:hover { background: var(--c-primary-hover); }
+  button.danger { color: var(--qp-red); border-color: var(--qp-red); }
+  button.small { padding: 5px 10px; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.link { border: 0; background: none; padding: 0; color: var(--qp-blue); text-decoration: underline; }
+
+  input[type='text'], input[type='email'], input[type='number'], textarea, select {
+    font: inherit;
+    width: 100%;
+    padding: 9px 10px;
+    border: 1px solid var(--qp-line);
+    border-radius: var(--radius-md);
+    background: var(--qp-card);
+    color: var(--c-text);
+    &:focus { outline: none; border-color: var(--c-primary); box-shadow: 0 0 0 2px var(--c-primary-light); }
+  }
+  select.auto { width: auto; }
+  input.count { width: 90px; padding: 6px; }
+  th.take { width: 110px; }
+  .num-field { width: 120px; }
+  textarea { min-height: 70px; resize: vertical; }
+  label { display: block; font-weight: 600; margin: 12px 0 4px; }
+  label.inline { display: inline-flex; gap: 6px; align-items: center; font-weight: 400; margin: 0; }
+  .hint { font-weight: 400; color: var(--qp-muted); font-size: 0.87rem; }
+
+  .badge {
+    display: inline-block;
+    padding: 1px 9px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: none;
+    white-space: nowrap;
+    background: var(--qp-line);
+    color: var(--c-text);
+    &.green { background: var(--qp-green-soft); color: var(--qp-green); }
+    &.red { background: var(--qp-red-soft); color: var(--qp-red); }
+    &.amber { background: var(--qp-amber-soft); color: var(--qp-amber); }
+    &.blue { background: var(--qp-blue-soft); color: var(--qp-blue); }
+  }
+
+  .note {
+    border-left: 4px solid var(--qp-blue);
+    background: var(--qp-blue-soft);
+    padding: 10px 12px;
+    border-radius: 6px;
+    margin: 10px 0;
+    &.green { border-color: var(--qp-green); background: var(--qp-green-soft); }
+    &.amber { border-color: var(--qp-amber); background: var(--qp-amber-soft); }
+    &.red { border-color: var(--qp-red); background: var(--qp-red-soft); }
+  }
+  .issues { margin: 6px 0; padding-left: 20px; }
+  .tips { padding-left: 20px; margin: 8px 0; }
+  .error { color: var(--qp-red); font-weight: 600; margin: 8px 0; }
+
+  .tabs {
+    display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0;
+    &.flush { margin: 0; }
+    button { border-radius: 999px; padding: 6px 14px; }
+    button.on { background: var(--c-text); color: var(--c-surface); border-color: var(--c-text); }
+  }
+
+  .option {
+    display: flex; gap: 10px; align-items: flex-start;
+    border: 1px solid var(--qp-line); border-radius: var(--radius-md);
+    padding: 10px 12px; margin: 8px 0; background: var(--qp-card);
+    .letter { font-weight: 700; min-width: 1.2em; }
+    .why { color: var(--qp-muted); font-size: 0.92rem; margin-top: 4px; }
+    &.correct { border-color: var(--qp-green); background: var(--qp-green-soft); }
+    &.wrong { border-color: var(--qp-red); background: var(--qp-red-soft); }
+    &.picked { border-color: var(--qp-blue); }
+  }
+  label.option { font-weight: 400; cursor: pointer; }
+  .key-option { font-weight: 700; color: var(--qp-green); }
+
+  .pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .comment {
+    border-top: 1px solid var(--qp-line); padding: 10px 0;
+    &.reply { margin-left: 22px; }
+    &.ai { border-left: 3px solid var(--qp-purple); padding-left: 10px; }
+  }
+
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+  th, td { border-bottom: 1px solid var(--qp-line); padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { color: var(--qp-muted); font-weight: 600; font-size: inherit; text-transform: none; }
+  tbody tr:hover { background: transparent; }
+  .scroll { overflow-x: auto; }
+
+  .bar { height: 6px; border-radius: 3px; background: var(--qp-line); overflow: hidden; margin-top: 6px; }
+  .bar i { display: block; height: 100%; background: var(--qp-green); }
+
+  details.card summary { cursor: pointer; }
+
+  .doc {
+    overflow-wrap: break-word;
+    img { max-width: 100%; }
+    pre { background: var(--c-bg); border: 1px solid var(--qp-line); padding: 10px; border-radius: var(--radius-md); overflow-x: auto; }
+    code { font-family: var(--font-mono); font-size: 0.9em; }
+    blockquote { margin: 10px 0; padding: 4px 12px; border-left: 4px solid var(--qp-amber); background: var(--qp-amber-soft); border-radius: 6px; }
+    table { display: block; overflow-x: auto; margin: 10px 0; }
+    h1 { font-size: 1.35rem; }
+    h2 { border-top: 1px solid var(--qp-line); padding-top: 16px; }
+    h1, h2, h3, h4 { scroll-margin-top: 70px; }
+  }
+
+  // AI-agent guide
+  .agent-help {
+    nav.card a { white-space: nowrap; }
+    details { border: 1px solid var(--qp-line); border-radius: var(--radius-md); padding: 8px 12px; margin: 8px 0; background: var(--qp-card); }
+    summary { cursor: pointer; }
+    .chat p { margin: 4px 0; }
+  }
+  code { font-family: var(--font-mono); font-size: 0.9em; }
+}
+
+// Printable exam pages (no shell)
+.pool-print {
+  display: block;
+  max-width: 800px;
+  margin: 0 auto;
+  background: #fff;
+  color: #000;
+  padding: 24px 28px;
+  min-height: 100vh;
+
+  .exam-head { border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 14px; }
+  .exam-head .line { display: inline-block; border-bottom: 1px solid #000; min-width: 180px; height: 1.1em; }
+  .exam-head .line.short { min-width: 120px; }
+  .exam-q { break-inside: avoid; margin: 0 0 14px; }
+  .exam-q ol { list-style: none; padding-left: 18px; margin: 4px 0 0; }
+  .exam-q li { margin: 2px 0; }
+  .key-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px 16px; font-size: 1.05rem; }
+  .key-id { color: #777; font-size: 0.8em; }
+}
+
+@media print {
+  .no-print { display: none !important; }
+  html, body, .pool-print { background: #fff; }
+  .pool-print { padding: 0; max-width: none; }
+  @page { margin: 16mm 15mm; }
+}

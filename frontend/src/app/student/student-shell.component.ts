@@ -14,6 +14,7 @@ import { MSG } from '../shared/messages';
         <nav class="nav-links" aria-label="Ana menü">
           <a routerLink="/courses" routerLinkActive="active" [routerLinkActiveOptions]="exact" ariaCurrentWhenActive="page">{{ msg.nav.myCourses }}</a>
           @if (auth.isStaff()) { <a routerLink="/t">{{ msg.nav.staffArea }}</a> }
+          <a routerLink="/agent" routerLinkActive="active" ariaCurrentWhenActive="page">{{ msg.nav.agent }}</a>
           @if (auth.user(); as u) { <span class="nav-user" [title]="u.email ?? ''">{{ u.fullName }}</span> }
           <a href="#" (click)="doLogout($event)">{{ msg.nav.logout }}</a>
         </nav>
