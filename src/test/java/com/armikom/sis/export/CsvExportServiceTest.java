@@ -1,0 +1,70 @@
+package com.armikom.sis.export;
+
+import com.armikom.sis.attendance.Attendance;
+import com.armikom.sis.attendance.AttendanceSource;
+import com.armikom.sis.attendance.AttendanceStatus;
+import com.armikom.sis.attendance.TeacherDecision;
+import com.armikom.sis.config.MasterSecretConfig.MasterSecret;
+import com.armikom.sis.course.RosterEntry;
+import com.armikom.sis.decision.Flag;
+import com.armikom.sis.security.DeviceHint;
+import org.junit.jupiter.api.Test;
+
+import java.time.Instant;
+import java.util.EnumSet;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class CsvExportServiceTest {
+
+    static final String DEVICE = "ABCDEFGHIJKLMNOPQRSTUVWX";
+    final DeviceHint deviceHint = new DeviceHint(new MasterSecret(new byte[32]));
+    final CsvExportService service = new CsvExportService(null, null, null, deviceHint);
+
+    @Test
+    void escapesFormulaInjection() {
+        assertEquals("\"'=HYPERLINK(1)\"", CsvExportService.esc("=HYPERLINK(1)"));
+        assertEquals("\"'+1\"", CsvExportService.esc("+1"));
+        assertEquals("\"'-1\"", CsvExportService.esc("-1"));
+        assertEquals("\"'@SUM\"", CsvExportService.esc("@SUM"));
+        assertEquals("\"a;b\"", CsvExportService.esc("a;b"));
+        assertEquals("\"a\"\"b\"", CsvExportService.esc("a\"b"));
+        assertEquals("düz", CsvExportService.esc("düz"));
+    }
+
+    @Test
+    void rendersBomTurkishAndAbsentees() {
+        Attendance a = new Attendance(null, "220201001", AttendanceSource.CHECKIN, AttendanceStatus.FLAGGED,
+                Instant.parse("2026-10-20T09:01:12Z"));
+        a.setFullName("Ayşe Yılmaz");
+        a.setFlags(EnumSet.of(Flag.SCREEN_SUSPECT, Flag.LATENCY_HIGH));
+        a.setMinLatencyMs(512);
+        a.setLatencyThresholdMs(330);
+        a.setTeacherDecision(TeacherDecision.NONE);
+
+        String csv = service.render(List.of(a), List.of(
+                new RosterEntry(null, "220201001", "Ayşe Yılmaz"),
+                new RosterEntry(null, "220201002", "Çağlar Şişli")));
+
+        assertTrue(csv.startsWith("﻿ogrenciNo;adSoyad;durum;katildi;bayraklar;gecikmeMs;esikMs;kaynak;zaman;not;cihazIpucu\r\n"));
+        String[] lines = csv.substring(1).split("\r\n");
+        assertEquals(3, lines.length);
+        assertTrue(lines[1].startsWith("220201001;Ayşe Yılmaz;INCELEME_BEKLIYOR;HAYIR;LATENCY_HIGH,SCREEN_SUSPECT;512;330;CHECKIN;"));
+        assertTrue(lines[1].endsWith(";;"));   // no device cookie on a record without one
+        assertEquals("220201002;Çağlar Şişli;GELMEDI;HAYIR;;;;;;;", lines[2]);
+        assertEquals(10, lines[2].chars().filter(c -> c == ';').count());
+    }
+
+    @Test
+    void rendersDeviceHintOfTheCheckinDevice() {
+        Attendance a = new Attendance(null, "220201001", AttendanceSource.CHECKIN, AttendanceStatus.ACCEPTED,
+                Instant.parse("2026-10-20T09:01:12Z"));
+        a.setDeviceId(DEVICE);
+
+        String csv = service.render(List.of(a), List.of());
+
+        String line = csv.substring(1).split("\r\n")[1];
+        assertEquals(deviceHint.of(DEVICE), line.substring(line.lastIndexOf(';') + 1));
+    }
+}
