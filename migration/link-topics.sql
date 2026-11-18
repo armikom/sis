@@ -79,7 +79,7 @@ insert into topic_link values
     (98, 4, 1), (98, 4, 3),     -- Traditional way (late feedback) + traditional vs agile
 
     -- Week 5 - Testing Criteria
-    (12, 6, 4), (12, 6, 7),     -- Week 6: static vs dynamic + user story review (no Week 5 section fits)
+    (12, 6, 4), (12, 6, 7),     -- static vs dynamic + user story review; question moved to Week 6 below
     (20, 5, 7),                 -- Statement vs branch coverage
     (33, 5, 7),                 -- Statement vs branch coverage (branch coverage level)
     (34, 5, 3),                 -- Coverage level (minimal vs minimum)
@@ -98,7 +98,7 @@ insert into topic_link values
     (9, 6, 4),                  -- Static and dynamic testing
     (10, 6, 5),                 -- Review process (individual review)
     (18, 6, 4),                 -- Static and dynamic testing
-    (26, 3, 1),                 -- Week 3: regression testing (no Week 6 section fits)
+    (26, 3, 1),                 -- regression testing; question moved to Week 3 below
     (44, 6, 4), (44, 6, 7),     -- Static testing + requirements review example
     (45, 6, 5), (45, 6, 6),     -- Review roles + Myers inspection (find, do not fix)
     (52, 6, 5),                 -- Review types (walkthrough)
@@ -123,6 +123,21 @@ insert into topic_link values
     (94, 7, 5),                 -- BVA (3-value)
     (95, 7, 6),                 -- Decision tables (2^n columns)
     (96, 7, 7);                 -- State transition testing (counting tests)
+
+-- Two questions were filed under the wrong week by their authors. Move them to the chapter their content
+-- (and their own reference note) belongs to. Re-runnable.
+create temp table chapter_move(question_id bigint primary key, to_chapter_number int) on commit drop;
+insert into chapter_move values
+    (12, 6),   -- static testing question filed under Week 5
+    (26, 3);   -- regression testing question filed under Week 6
+
+update question q
+   set chapter_id = ch.id, updated_at = now()
+  from chapter_move m
+  join question q0 on q0.id = m.question_id
+  join chapter c0 on c0.id = q0.chapter_id
+  join chapter ch on ch.course_id = c0.course_id and ch.number = m.to_chapter_number
+ where q.id = m.question_id and q.chapter_id <> ch.id;
 
 do $$
 declare
