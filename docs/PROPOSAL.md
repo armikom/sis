@@ -1,6 +1,6 @@
 # SIS — Student Information System: analysis and implementation proposal
 
-Date: 2026-11-18. Status: proposal, nothing implemented yet.
+Date: 2026-11-18. Status: accepted on 2026-11-19 with the defaults in section 5 and one change (check-in is roster-only); implementation in progress. Implementation defaults are logged in `docs/DECISIONS.md`.
 
 SIS merges two running apps into one course-centred system:
 
@@ -122,7 +122,7 @@ login_token, user_session, mcp_token             → person_id
 - `course.term` (for example `2026-FALL`) lets SENG 403 be offered again next year without mixing rosters and attendance. A new offering can copy chapters and approved questions from an earlier one.
 - `ai_context` replaces the hard-coded "SENG 403 … (4th year)…" constant; `questions_per_chapter` and `ask_ai_per_day` replace the env values.
 
-**Attendance** — `classroom`, `class_session`, `calibration_run`, `checkin_attempt`, `scan_record`, `attendance` keep their current columns. `roster_entry` is replaced by `enrollment`. `attendance` and `exam_result` gain a nullable `person_id`; `student_no` stays, because check-in can accept numbers that are not on the roster.
+**Attendance** — `classroom`, `class_session`, `calibration_run`, `checkin_attempt`, `scan_record`, `attendance` keep their current columns. `roster_entry` is replaced by `enrollment`. Check-in, manual entry and exam results accept **only students on the course roster**, so `attendance.person_id` and `exam_result.person_id` are mandatory; `student_no` / `full_name` stay only as a snapshot for exports. The `require_roster` session option is removed.
 
 **Pool** — `question`, `comment`, `flag` unchanged (course comes through `chapter`). `attempt` is renamed `question_attempt` so it is not confused with `checkin_attempt`.
 

@@ -1,15 +1,25 @@
+# SIS production stack for a host that already runs a host-level Cloudflare tunnel (cloudflared).
+# No reverse proxy / TLS here: the tunnel terminates HTTPS and forwards to 127.0.0.1:${APP_PORT:-8791}.
+#
+#   cd deploy && cp .env.example .env && $EDITOR .env
+#   docker compose up -d --build
+#
+# Required secrets (compose refuses to start without them): DB_PASSWORD, APP_MASTER_SECRET, APP_ADMIN_PASSWORD.
+name: sis
+
 services:
   db:
-    image: postgres:17-alpine
+    image: postgres:17
     environment:
-      POSTGRES_DB: yoklama
-      POSTGRES_USER: yoklama
+      POSTGRES_DB: sis
+      POSTGRES_USER: sis
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in deploy/.env}
+      TZ: ${TZ:-Europe/Istanbul}
     volumes:
       - pg_data:/var/lib/postgresql/data
     # Not published: only the app container talks to the database.
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U yoklama -d yoklama"]
+      test: ["CMD-SHELL", "pg_isready -U sis -d sis"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -24,37 +34,38 @@ services:
         condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/yoklama
-      SPRING_DATASOURCE_USERNAME: yoklama
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/sis
+      SPRING_DATASOURCE_USERNAME: sis
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in deploy/.env}
-      APP_MASTER_SECRET: ${APP_MASTER_SECRET:?APP_MASTER_SECRET must be set (openssl rand -base64 32)}
-      APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-https://${DOMAIN:-localhost}}
+      # MUST be the SAME value as in the old yoklama deployment: it decrypts the BLE keys of the
+      # classrooms and signs the QR/check-in tokens. A different value breaks existing classrooms.
+      APP_MASTER_SECRET: ${APP_MASTER_SECRET:?APP_MASTER_SECRET must be set (same value as the old yoklama deployment)}
+      APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-https://sis.armikom.com}
       APP_ADMIN_USERNAME: ${APP_ADMIN_USERNAME:-admin}
       APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:?APP_ADMIN_PASSWORD must be set}
       APP_FRAMES_DIR: /app/data/frames
-      TZ: ${TZ:-Europe/Istanbul}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      EWS_URL: ${EWS_URL:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
+      TZ: Europe/Istanbul
     volumes:
       - frame_data:/app/data/frames
-    # Direct access for local testing only; public traffic goes through Caddy (HTTPS).
+    # Only the local cloudflared connects here.
     ports:
-      - "127.0.0.1:8080:8080"
-    restart: unless-stopped
-
-  caddy:
-    image: caddy:2
-    environment:
-      DOMAIN: ${DOMAIN:-localhost}
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-    depends_on:
-      - app
+      - "127.0.0.1:${APP_PORT:-8791}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
     restart: unless-stopped
 
 volumes:
   pg_data:
   frame_data:
-  caddy_data:
