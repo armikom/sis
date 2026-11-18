@@ -5,6 +5,7 @@ import tools.jackson.databind.JsonNode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -160,7 +161,7 @@ public record McpTool(String name, String title, String description, Map<String,
             if (v.isBoolean()) {
                 return v.asBoolean();
             }
-            if (v.isString() && List.of("true", "false").contains(v.asString().trim().toLowerCase())) {
+            if (v.isString() && List.of("true", "false").contains(v.asString().trim().toLowerCase(Locale.ROOT))) {
                 return Boolean.parseBoolean(v.asString().trim());
             }
             throw new IllegalArgumentException("The argument '" + name + "' must be true or false.");

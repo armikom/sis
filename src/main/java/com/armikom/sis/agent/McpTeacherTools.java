@@ -12,6 +12,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static com.armikom.sis.agent.McpTool.bool;
@@ -99,7 +100,7 @@ public class McpTeacherTools {
                                 "note", str("Note for the student. Required for REVISE and REJECT.")), c -> {
                             long id = c.args().num("question_id");
                             return staff.decide(c.courseOfQuestion(id), id, new PoolStaffController.DecisionIn(
-                                    c.args().str("action").trim().toUpperCase(), c.args().optStr("note")));
+                                    c.args().str("action").trim().toUpperCase(Locale.ROOT), c.args().optStr("note")));
                         }),
                 McpTool.write(t, "edit_question", "Fix the wording of a question",
                         "Changes the text of any question of the course. Send only the fields that change. The state "
@@ -259,7 +260,7 @@ public class McpTeacherTools {
     private List<Map<String, Object>> reviewList(McpCall c) {
         long courseId = c.courseId();
         Args a = c.args();
-        String status = a.optStr("status") == null ? "PENDING" : a.optStr("status").trim().toUpperCase();
+        String status = a.optStr("status") == null ? "PENDING" : a.optStr("status").trim().toUpperCase(Locale.ROOT);
         Integer chapter = a.optInt("chapter");
         List<Map<String, Object>> rows = staff.questions(courseId, status,
                 chapter == null ? null : student.chapterId(courseId, chapter), null).stream()

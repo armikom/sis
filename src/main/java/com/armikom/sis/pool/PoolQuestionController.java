@@ -16,6 +16,7 @@ import tools.jackson.databind.annotation.JsonNaming;
 
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -60,13 +61,13 @@ public class PoolQuestionController {
             QuestionIn q = new QuestionIn(chapterId, text("The question text", stem, 15, 800),
                     text("Option A", optionA, 1, 300), text("Option B", optionB, 1, 300),
                     text("Option C", optionC, 1, 300), text("Option D", optionD, 1, 300),
-                    correct == null ? "" : correct.trim().toUpperCase(), text("The reason for A", rationaleA, 10, 600),
+                    correct == null ? "" : correct.trim().toUpperCase(Locale.ROOT), text("The reason for A", rationaleA, 10, 600),
                     text("The reason for B", rationaleB, 10, 600), text("The reason for C", rationaleC, 10, 600),
                     text("The reason for D", rationaleD, 10, 600), text("The reference", reference, 3, 200));
             if (!LETTERS.contains(q.correct)) {
                 throw PoolException.bad("Choose the correct option (A, B, C or D).");
             }
-            if (List.of(q.optionA, q.optionB, q.optionC, q.optionD).stream().map(String::toLowerCase).distinct()
+            if (List.of(q.optionA, q.optionB, q.optionC, q.optionD).stream().map(o -> o.toLowerCase(Locale.ROOT)).distinct()
                     .count() < 4) {
                 throw PoolException.bad("The four options must be different.");
             }
@@ -166,7 +167,7 @@ public class PoolQuestionController {
         if (isAuthor(q, me) || access.isStaff(courseId)) {
             throw PoolException.bad("You cannot answer this question.");
         }
-        String selected = in == null || in.selected() == null ? "" : in.selected().trim().toUpperCase();
+        String selected = in == null || in.selected() == null ? "" : in.selected().trim().toUpperCase(Locale.ROOT);
         if (!LETTERS.contains(selected)) {
             throw PoolException.bad("Choose one option.");
         }
@@ -297,7 +298,7 @@ public class PoolQuestionController {
         QuestionIn in = (raw == null ? new QuestionIn(null, null, null, null, null, null, null, null, null, null,
                 null, null) : raw).checked();
         if (!List.of("PENDING", "NEEDS_REVISION").contains(q.get("status"))) {
-            throw PoolException.bad("This question is already " + q.get("status").toString().toLowerCase()
+            throw PoolException.bad("This question is already " + q.get("status").toString().toLowerCase(Locale.ROOT)
                     + " and cannot change.");
         }
         db.sql(UPDATE_FIELDS + ", status = 'PENDING' where id = :id").param("id", id).params(fields(in)).update();

@@ -14,6 +14,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
@@ -365,7 +366,7 @@ public class McpStudentTools {
         long me = c.person().personId();
         String status = a.optStr("status");
         if (status != null) {
-            status = status.trim().toUpperCase();
+            status = status.trim().toUpperCase(Locale.ROOT);
             if (!STUDY_STATUSES.contains(status)) {
                 throw new IllegalArgumentException("status must be one of " + STUDY_STATUSES + ".");
             }
@@ -522,7 +523,7 @@ public class McpStudentTools {
     }
 
     private static String letter(String raw) {
-        String l = raw.trim().toUpperCase();
+        String l = raw.trim().toUpperCase(Locale.ROOT);
         if (!LETTERS.contains(l)) {
             throw new IllegalArgumentException("selected must be A, B, C or D.");
         }

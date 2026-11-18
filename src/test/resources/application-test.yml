@@ -8,3 +8,6 @@ app:
   admin:
     username: admin
     password: admin123
+  ai:
+    # Never call OpenRouter from tests, whatever OPENROUTER_API_KEY holds in the environment.
+    openrouter-key: ""
