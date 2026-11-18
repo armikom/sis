@@ -3,7 +3,7 @@ package com.armikom.sis.exam;
 import com.armikom.sis.common.ApiException;
 import com.armikom.sis.common.ErrorCode;
 import com.armikom.sis.exam.ExamDtos.ExamSummaryDto;
-import com.armikom.sis.security.CurrentTeacher;
+import com.armikom.sis.core.auth.CourseAccess;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -24,21 +24,21 @@ class ExamQueries {
     private final ExamQuestionRepository questionRepo;
     private final ExamResultRepository resultRepo;
     private final ExamAnswerRepository answerRepo;
-    private final CurrentTeacher currentTeacher;
+    private final CourseAccess access;
 
     ExamQueries(ExamRepository examRepo, ExamQuestionRepository questionRepo, ExamResultRepository resultRepo,
-                ExamAnswerRepository answerRepo, CurrentTeacher currentTeacher) {
+                ExamAnswerRepository answerRepo, CourseAccess access) {
         this.examRepo = examRepo;
         this.questionRepo = questionRepo;
         this.resultRepo = resultRepo;
         this.answerRepo = answerRepo;
-        this.currentTeacher = currentTeacher;
+        this.access = access;
     }
 
-    /** Loads an exam and checks that the current teacher owns its course. Call inside a transaction. */
+    /** Loads an exam and checks that the current person is staff of its course. Call inside a transaction. */
     Exam requireExam(long id) {
         Exam exam = examRepo.findById(id).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
-        currentTeacher.requireOwner(exam.getCourse().getOwnerId());
+        access.requireStaff(exam.getCourse().getId());
         return exam;
     }
 
@@ -82,7 +82,7 @@ class ExamQueries {
         List<ExamResult> results = data.results(exam);
         List<BigDecimal> totals = results.stream().map(r -> resultTotal(data.answers(r))).toList();
         return new ExamSummaryDto(exam.getId(), exam.getCourse().getId(), exam.getTitle(), exam.getExamDate(),
-                questions.size(), examTotal(questions), results.size(), ExamMath.average(totals),
+                exam.getForms(), questions.size(), examTotal(questions), results.size(), ExamMath.average(totals),
                 exam.getCreatedAt().toString());
     }
 

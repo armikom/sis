@@ -84,6 +84,12 @@ public class ExamController {
                 .body(export.content().getBytes(StandardCharsets.UTF_8));
     }
 
+    /** Signed-in student: own exam totals in the course. */
+    @GetMapping("/courses/{courseId}/my-results")
+    public List<MyResultDto> myResults(@PathVariable long courseId) {
+        return service.myResults(courseId);
+    }
+
     @GetMapping("/courses/{courseId}/learning")
     public CourseLearningDto courseLearning(@PathVariable long courseId) {
         return analysis.course(courseId);

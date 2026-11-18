@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../core/auth.service';
 import { MSG } from '../shared/messages';
@@ -13,10 +13,11 @@ import { MSG } from '../shared/messages';
         <nav class="nav-links" aria-label="Ana menü">
           <a routerLink="/t" routerLinkActive="active" [routerLinkActiveOptions]="coursesActive" ariaCurrentWhenActive="page">{{ msg.nav.courses }}</a>
           <a routerLink="/t/classrooms" routerLinkActive="active" ariaCurrentWhenActive="page">{{ msg.nav.classrooms }}</a>
-          @if (auth.isAdmin) {
-            <a routerLink="/t/admin/teachers" routerLinkActive="active" ariaCurrentWhenActive="page">{{ msg.nav.admin }}</a>
+          @if (auth.isAdmin()) {
+            <a routerLink="/t/admin/people" routerLinkActive="active" ariaCurrentWhenActive="page">{{ msg.nav.admin }}</a>
           }
-          @if (auth.user(); as u) { <span class="nav-user" [title]="u.username">{{ u.displayName || u.username }}</span> }
+          @if (hasStudentCourses()) { <a routerLink="/courses">{{ msg.nav.myCourses }}</a> }
+          @if (auth.user(); as u) { <span class="nav-user" [title]="u.email ?? u.username ?? ''">{{ u.fullName }}</span> }
           <a href="#" (click)="doLogout($event)">{{ msg.nav.logout }}</a>
         </nav>
       </header>
@@ -29,6 +30,8 @@ import { MSG } from '../shared/messages';
 export class TeacherShellComponent {
   readonly auth = inject(AuthService);
   readonly msg = MSG;
+  /** Staff who are also enrolled as a student somewhere get a link to the student area. */
+  readonly hasStudentCourses = computed(() => (this.auth.user()?.courses ?? []).some(c => c.role === 'STUDENT'));
   /** "/t" prefixes every teacher route, so the course list link is only active on an exact match. */
   readonly coursesActive = { paths: 'exact', queryParams: 'ignored', matrixParams: 'ignored', fragment: 'ignored' } as const;
 

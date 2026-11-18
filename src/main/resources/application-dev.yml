@@ -1,13 +1,15 @@
+# Local development: PostgreSQL from the root docker-compose.yml (`docker compose up -d db`).
 spring:
   datasource:
-    url: jdbc:h2:file:./data/yoklama-dev;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
-    username: sa
-    password:
-  h2.console.enabled: true
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/sis}
+    username: ${SPRING_DATASOURCE_USERNAME:sis}
+    password: ${SPRING_DATASOURCE_PASSWORD:sis}
 
 app:
   device-cookie:
     secure: false
+  auth:
+    cookie-secure: false
   admin:
     username: ${APP_ADMIN_USERNAME:admin}
     password: ${APP_ADMIN_PASSWORD:admin123}

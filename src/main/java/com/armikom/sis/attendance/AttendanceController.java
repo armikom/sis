@@ -30,7 +30,7 @@ public class AttendanceController {
     public record DecideRequest(String decision, String note) {}
     public record ManualRequest(String studentNo, String note) {}
     public record BulkRequest(List<String> studentNumbers, String note) {}
-    public record BulkResultDto(int added, int skipped, List<String> errors) {}
+    public record BulkResultDto(int added, int skipped, List<String> errors, List<String> notInRoster) {}
     public record AttemptDto(String studentNo, String resultCode, String deviceHint,
                              String conflictStudentNo, String createdAt) {}
 
@@ -58,7 +58,7 @@ public class AttendanceController {
             throw new ApiException(ErrorCode.VALIDATION_ERROR, Map.of("studentNumbers", "Liste boş olamaz"));
         }
         var result = service.bulkAdd(sessionId, req.studentNumbers(), req.note());
-        return new BulkResultDto(result.added(), result.skipped(), result.errors());
+        return new BulkResultDto(result.added(), result.skipped(), result.errors(), result.notInRoster());
     }
 
     @DeleteMapping("/attendances/{attId}")

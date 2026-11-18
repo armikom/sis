@@ -1,33 +1,35 @@
-# Kodlama Ajanı Talimatları
+# Coding agent instructions
 
-Bu repo bir spesifikasyondan sıfırdan uygulanacak. Kod yazmadan önce `README.md` ve `docs/` altındaki **tüm** dokümanları sırasıyla oku.
+Read `README.md`, `docs/PROPOSAL.md` (sections 2–3) and `docs/DECISIONS.md` before changing code. Legacy yoklama specs are in `docs/legacy-yoklama/`.
 
-## Çalışma şekli
-1. `docs/IMPLEMENTATION_PLAN.md` fazlarını sırayla uygula. Bir faz bitmeden sonrakine geçme.
-2. Her fazın sonunda: testleri yaz ve çalıştır (`./mvnw verify`, `cd frontend && npm test -- --watch=false`), kabul kriterlerini doğrula, plandaki kutucukları `- [x]` yap.
-3. Kullanıcıya soru sorma; makul kararı ver ve `docs/DECISIONS.md`'ye tek satır olarak yaz (`- [Faz N] karar — gerekçe`).
-4. Bağlam kaybolursa: plandaki işaretlenmemiş ilk maddeden devam et.
-5. Kütüphane API'si dokümandaki örnekten farklıysa (Spring Boot 4.1, Angular 22, zxing-wasm 3.x, NimBLE 2.x), kurulu sürümün tiplerine/belgelerine göre uyarla; davranışı değiştirme.
+## How to work
+- Do not ask questions; pick a sensible default and append it as one line to `docs/DECISIONS.md` (`- [Area] decision — reason`).
+- The schema is `src/main/resources/db/migration`; change it only through Flyway migrations (PostgreSQL only, no H2).
+- Run the tests before committing: `./mvnw -Pno-frontend test` (Testcontainers needs Docker) and `cd frontend && npm test -- --watch=false`; `cd frontend && npx ng build` must pass.
+- If a library API differs from the docs (Spring Boot 4.1, Angular 22, zxing-wasm 3.x, NimBLE 2.x), adapt to the installed version without changing behaviour.
 
-## Değiştirilemez kurallar
-- **Protokol** (`docs/02-PROTOCOL.md`) normatiftir. Token formatı, HMAC girdileri, kodlamalar ve test vektörleri birebir uygulanır. Değişiklik gerekiyorsa önce dokümanı ve vektörleri güncelle, sonra kodu.
-- Ölçüm ve kararlarda **istemci duvar saati (`Date.now()`) kullanılmaz**; yalnızca `performance.now()` + ölçülmüş offset. Sunucuda `Clock` bean'i.
-- Öğrenciye hiçbir yanıtta bayraklar, gecikme değerleri veya eşikler gönderilmez.
-- Oturum anahtarı yalnızca `display-config` ile sahibine gider; ham token, oturum anahtarı ve BLE anahtarı loglanmaz.
-- İmza karşılaştırmaları sabit zamanlı.
-- Şema yalnızca Flyway ile değişir; migration'lar H2 (PostgreSQL modu) ve PostgreSQL'de çalışmalı.
+## Rules that must not change
+- **Check-in protocol** (`docs/legacy-yoklama/02-PROTOCOL.md`) is normative: token format, HMAC inputs, encodings and test vectors are implemented exactly.
+- No client wall clock (`Date.now()`) in measurements and decisions — only `performance.now()` + measured offset. Server: the `Clock` bean.
+- Students never receive flags, latency values or thresholds; students see nicknames of other students, never names.
+- The session key only goes to course staff via `display-config`; raw tokens, session keys and BLE keys are never logged.
+- Check-in, manual attendance and exam results accept only students on the course roster (live STUDENT enrollment).
 
-## Kod stili
-- Java: Java 21 özellikleri (record, switch ifadeleri), constructor injection, `final` alanlar, DTO'lar record. Paket yapısı 05 §3.
-- Spring Boot 4 / Jackson 3: `tools.jackson.*` (anotasyonlar `com.fasterxml.jackson.annotation`).
-- Angular: standalone + signals + `inject()`; zoneless; `OnPush` gerekmez ama şablonlarda signal okuması kullan. Kontrol akışı için `@if/@for/@switch`.
-- Kullanıcıya görünen metinler Türkçe; kod tanımlayıcıları, commit mesajları ve yorumlar İngilizce.
-- Gereksiz bağımlılık ekleme; UI kütüphanesi yok.
+## Auth contract for modules
+- Current person: inject `com.armikom.sis.core.auth.CourseAccess` and call `currentPerson()` → `SisPrincipal(personId, fullName, email, studentNo, nickname, systemAdmin)`.
+- Per-course checks: `requireMember(courseId)`, `requireStaff(courseId)`, `requireOwnerOrAdmin(courseId)` (return the `Course`; 401/403/404 as `ApiException`), `isStaff(courseId)`, `roleIn(courseId)`, `isStaffAnywhere()`, `requireSystemAdmin()`. System admins pass every check.
+- `/api/admin/**` requires a system admin; `/api/public/**` is open and CSRF-exempt; all other `/api/**` need a signed-in person.
 
-## Komutlar
+## Code style
+- Java 21 (records, switch expressions), constructor injection, `final` fields, DTOs as records. Spring Boot 4 / Jackson 3: `tools.jackson.*`.
+- Angular: standalone + signals + `inject()`, zoneless, `@if/@for/@switch`. New staff routes under `t` (staffGuard), student routes under `courses` (authGuard).
+- User-facing text Turkish (`frontend/src/app/shared/messages.ts`; pool screens may be bilingual); identifiers, comments and commit messages English.
+- No new dependencies without need; no UI library.
+
+## Commands
 ```bash
-./mvnw verify                      # backend + frontend build + testler
-./mvnw -Pno-frontend spring-boot:run
-cd frontend && npm start           # 4200, /api → 8080 proxy
-cd frontend && npm test -- --watch=false
+docker compose up -d db                  # PostgreSQL on 127.0.0.1:5433
+./mvnw -Pno-frontend spring-boot:run     # dev profile
+cd frontend && npm start                 # 4200, /api → 8080 proxy
+./mvnw verify                            # backend + frontend build + tests
 ```

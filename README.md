@@ -1,133 +1,72 @@
-# Yoklama — Rotating QR Attendance System
+# SIS — Student Information System
 
-A web-based classroom attendance system where a projector displays QR codes that refresh every second. Students scan the QR with their phones to check in.
+One course-centred system that merges **yoklama** (rotating-QR lecture attendance, exam results and learning analysis) and **question-pool** (student-written question bank). See `docs/PROPOSAL.md` for the design and `docs/DECISIONS.md` for implementation defaults.
 
 ## Architecture
 
-- **Backend:** Spring Boot 4.1 (Java 21) — REST API, HMAC-SHA256 token verification, decision engine
-- **Frontend:** Angular 22 — standalone, zoneless, signals; QR decoding via zxing-wasm
-- **Database:** PostgreSQL (H2 in PostgreSQL-compatibility mode for local dev)
-- **BLE Beacon:** ESP32 (NimBLE) — optional Bluetooth proximity verification
+- **Backend:** Spring Boot 4.1 (Java 21), one modular monolith under `com.armikom.sis`:
+  - `core` — people, courses (with term and per-course settings), enrollments (OWNER / INSTRUCTOR / ASSISTANT / STUDENT), chapters, sign-in (e-mail magic link + username/password, DB-backed sessions), mail (SMTP or EWS), per-course authorisation (`CourseAccess`)
+  - attendance (`attendance`, `checkin`, `session`, `classroom`, `crypto`, `decision`, `frames`, `live`, `export`) — rotating-QR check-in, unchanged protocol (`docs/legacy-yoklama/02-PROTOCOL.md` is normative)
+  - `exam` — exams, result entry, analysis
+  - `pool`, `agent` — question pool and MCP (added by their own modules)
+- **Frontend:** Angular 22 (standalone, zoneless, signals), QR decoding via zxing-wasm
+- **Database:** PostgreSQL only; schema in `src/main/resources/db/migration` (Flyway)
+- **BLE beacon:** ESP32 firmware in `firmware/` (optional proximity check)
 
-## Quick Start with Docker Compose
+## Local development
 
-The fastest way to run the project. No JDK, Node.js, or database installation required.
+Prerequisites: JDK 21+, Node.js 24.15+ (or 26+), Docker.
 
 ```bash
-git clone <repo-url> && cd yoklama
-docker compose up --build
+docker compose up -d db                 # PostgreSQL 17 on 127.0.0.1:5433 (db/user/password: sis)
+./mvnw -Pno-frontend spring-boot:run    # dev profile; creates admin / admin123 on first start
+cd frontend && npm start                # http://localhost:4200, /api proxied to :8080
 ```
 
-That's it. Open **http://localhost:8790** and log in with `admin` / `admin123`.
+Without SMTP/EWS settings, sign-in links are written to the application log.
 
-To customise settings (database password, admin credentials, etc.):
-
-```bash
-cp .env.example .env
-# edit .env as needed
-docker compose up --build
-```
-
-### Default Credentials
-
-| Variable | Default |
-|---|---|
-| `APP_ADMIN_USERNAME` | `admin` |
-| `APP_ADMIN_PASSWORD` | `admin123` |
-| `DB_PASSWORD` | `changeme` |
-
-> **Note:** For production deployments with HTTPS and Caddy, see [Production Deployment](#production-deployment) below.
-
-## Local Development (without Docker)
-
-### Prerequisites
-
-- JDK 21+
-- Node.js 24.15+ or 26+
-- Maven (wrapper included)
-
-### Running
+### Tests
 
 ```bash
-# Backend (dev profile with H2 database, auto-created admin user admin/admin123)
-./mvnw -Pno-frontend spring-boot:run
-
-# Frontend (separate terminal, API proxied to 8080)
-cd frontend && npm start
-```
-
-Open **http://localhost:4200** in your browser.
-
-### Testing
-
-```bash
-# Full build + tests (backend + frontend)
-./mvnw verify
-
-# Backend only
-./mvnw -Pno-frontend test
-
-# Frontend only
+./mvnw -Pno-frontend test               # backend (integration tests start PostgreSQL via Testcontainers)
 cd frontend && npm test -- --watch=false
+./mvnw verify                           # everything, including the frontend build
 ```
 
-## Production Deployment
-
-The `deploy/` directory contains a production-ready Docker Compose setup with Caddy for automatic HTTPS.
+### Whole stack in Docker
 
 ```bash
-cd deploy
-cp .env.example .env
-# Edit .env — set DOMAIN, DB_PASSWORD, APP_MASTER_SECRET, APP_ADMIN_PASSWORD
-
-# Build and start
-docker compose up -d --build
+cp .env.example .env    # optional
+docker compose up --build
 ```
 
-Caddy automatically obtains an HTTPS certificate for the configured `DOMAIN` and serves the app at `https://<DOMAIN>` (SSE buffering disabled).
-Direct access is limited to `http://127.0.0.1:8080` on the host; PostgreSQL is not exposed externally.
-The stack refuses to start if `DB_PASSWORD`, `APP_MASTER_SECRET`, or `APP_ADMIN_PASSWORD` are empty.
+App: http://localhost:8790 — `admin` / `admin123` unless changed in `.env`. Production setup: `deploy/`.
 
-### Environment Variables
+## Configuration
 
 | Variable | Description |
 |---|---|
-| `DOMAIN` | Domain for Caddy's automatic HTTPS certificate |
-| `APP_MASTER_SECRET` | 32-byte base64-encoded master key (required; `openssl rand -base64 32`) |
-| `APP_PUBLIC_BASE_URL` | Public URL (used inside QR codes for the check-in page) |
-| `APP_ADMIN_USERNAME` | Initial admin username |
-| `APP_ADMIN_PASSWORD` | Initial admin password |
-| `APP_FRAMES_DIR` | Camera frame storage directory (default: `./data/frames`) |
-| `TZ` | Timezone for CSV exports (default: `Europe/Istanbul`) |
+| `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` | Database (dev default `jdbc:postgresql://localhost:5433/sis`, `sis`/`sis`) |
+| `APP_MASTER_SECRET` | 32-byte base64 key; must stay the same across deployments (QR session keys, device hints) |
+| `APP_PUBLIC_BASE_URL` | Fallback public URL for QR and login links (normally taken from the request / X-Forwarded-*) |
+| `APP_LINK_HOSTS` | Optional comma-separated host allow-list for mailed login links |
+| `APP_ADMIN_USERNAME` / `APP_ADMIN_PASSWORD` | System administrator created on start when no person has that username |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` | SMTP for sign-in links |
+| `EWS_URL` | Exchange Web Services endpoint; when set, mail goes through EWS with `SMTP_USER`/`SMTP_PASSWORD` |
+| `APP_FRAMES_DIR` | Camera frame storage (default `./data/frames`, 7-day retention) |
+| `TZ` | Time zone for CSV exports (default `Europe/Istanbul`) |
 
 ## Usage
 
-### Instructor
-
-1. Log in at `/t/login`
-2. Create a course and student roster
-3. Add a classroom (optionally with location and BLE beacon)
-4. Create a session and click "Start"
-5. Click "Display" to open the projector window
-6. Monitor live attendance from the dashboard; review flagged records
-
-### Student
-
-1. Enter the 6-digit session code on the home page
-2. Enter your student ID
-3. Tap "Start Camera" and scan the QR code on the projector
-4. Attendance is recorded automatically once the required number of distinct codes is scanned
+- **Sign in** at `/login`: everybody with an e-mail on a course roster (or staff list) gets a single-use link valid for 15 minutes; staff may also use username + password. Staff land on `/t`, students on `/courses`.
+- **Staff** (`/t`): create a course (creator becomes owner), import the roster (`studentNo, fullName[, email]` or `email, fullName, studentNo`, pasted or as CSV), add co-instructors/assistants, set course options, run attendance sessions (projector view, live dashboard, review, CSV) and exams.
+- **Students**: check in at `/` or by scanning the projected QR (`/c/:code`, `/q/:token`, no sign-in needed; only student numbers on the course roster are accepted); signed in, `/courses` shows their own attendance and exam results.
+- **System admin**: `/t/admin/people` — search, edit, deactivate or delete people.
 
 ## Security
 
-- QR tokens are signed with HMAC-SHA256; the session key is shared only between server and display
-- Signature comparisons are constant-time (timing attack protection)
-- Device cookie (HttpOnly) prevents reuse
-- IP/device-based rate limiting on public POST endpoints and login (429 + `Retry-After`)
-- Camera frames are collected transparently and auto-deleted after 7 days
-- The decision engine only sets flags; the final decision is always the instructor's
-- Flags, latency values, and thresholds are never sent to student responses
-
-## License
-
-See [LICENSE](LICENSE) for details.
+- One session mechanism: opaque random token in the HttpOnly `sis_session` cookie, only its SHA-256 stored in `user_session`, 30-day expiry, survives restarts. CSRF protection via the `XSRF-TOKEN` cookie / `X-XSRF-TOKEN` header.
+- QR tokens are HMAC-SHA256 signed; signature comparisons are constant-time.
+- Device cookie (HttpOnly) and IP/device rate limiting on public endpoints and sign-in.
+- Flags, latencies and thresholds never reach students; the decision engine only flags, the instructor decides.
+- Camera frames are deleted automatically after 7 days.

@@ -1,22 +1,27 @@
-# Quick-start compose for local development and demos.
-# Usage:
-#   cp .env.example .env   # (optional — defaults work out of the box)
-#   docker compose up --build
+# SIS compose for local development and demos.
 #
-# App:  http://localhost:8790
-# Login: admin / admin123  (or values from .env)
+# Development (app from the IDE / Maven, database in Docker):
+#   docker compose up -d db
+#   ./mvnw -Pno-frontend spring-boot:run          # dev profile → jdbc:postgresql://localhost:5433/sis
+#
+# Whole stack in Docker:
+#   cp .env.example .env   # optional — defaults work out of the box
+#   docker compose up --build
+#   App: http://localhost:8790   Login: admin / admin123 (or values from .env)
 
 services:
   db:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: yoklama
-      POSTGRES_USER: yoklama
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      POSTGRES_DB: sis
+      POSTGRES_USER: sis
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-sis}
+    ports:
+      - "127.0.0.1:5433:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U yoklama -d yoklama"]
+      test: ["CMD-SHELL", "pg_isready -U sis -d sis"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -29,19 +34,26 @@ services:
         condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/yoklama
-      SPRING_DATASOURCE_USERNAME: yoklama
-      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-changeme}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/sis
+      SPRING_DATASOURCE_USERNAME: sis
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-sis}
       APP_MASTER_SECRET: ${APP_MASTER_SECRET:-dGVzdC1tYXN0ZXItc2VjcmV0LWtleS0zMi1ieXRlcyE=}
       APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-http://localhost:8790}
+      APP_LINK_HOSTS: ${APP_LINK_HOSTS:-}
       APP_ADMIN_USERNAME: ${APP_ADMIN_USERNAME:-admin}
       APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:-admin123}
       APP_FRAMES_DIR: /app/data/frames
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      EWS_URL: ${EWS_URL:-}
       TZ: ${TZ:-Europe/Istanbul}
     volumes:
       - frame_data:/app/data/frames
     ports:
-      - "8790:8080"
+      - "127.0.0.1:8790:8080"
     restart: unless-stopped
 
 volumes:

@@ -1,6 +1,19 @@
 spring:
-  application.name: yoklama
+  application.name: sis
+  # Mail: SMTP when SMTP_HOST is set, EWS when EWS_URL is set, otherwise login links are only logged.
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USER:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+      mail.smtp.connectiontimeout: 10000
+      mail.smtp.timeout: 15000
   profiles.default: dev
+  # Sign-in is our own (core.auth); no generated in-memory user.
+  autoconfigure.exclude: org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
   jpa:
     open-in-view: false
     hibernate.ddl-auto: validate
@@ -9,15 +22,11 @@ spring:
     max-request-size: 1MB
 server:
   forward-headers-strategy: framework
-  servlet.session:
-    timeout: 12h
-    cookie:
-      http-only: true
-      same-site: lax
   compression.enabled: true
 management:
   endpoints.web.exposure.include: health
   endpoint.health.show-details: never
+  health.mail.enabled: false
 
 app:
   master-secret: ${APP_MASTER_SECRET:}
@@ -25,6 +34,17 @@ app:
   admin:
     username: ${APP_ADMIN_USERNAME:}
     password: ${APP_ADMIN_PASSWORD:}
+  auth:
+    cookie-name: sis_session
+    cookie-secure: true
+    session-days: 30
+    link-minutes: 15
+    # Comma-separated host names allowed as the base of mailed login links. Empty: the request's
+    # public base URL is trusted (X-Forwarded-*); a host not on a non-empty list falls back to public-base-url.
+    link-hosts: ${APP_LINK_HOSTS:}
+  mail:
+    from: ${MAIL_FROM:}
+    ews-url: ${EWS_URL:}
   privacy-notice: "Doğrulama amacıyla, QR okutulduğu andaki kamera görüntüsü kaydedilir ve 7 gün sonra otomatik silinir."
   device-cookie:
     name: YD
@@ -41,6 +61,7 @@ app:
     per-ip-per-minute: 1500
     starts-per-device-per-10min: 10
     login-per-ip-per-minute: 20
+    auth-request-per-ip-per-minute: 10
   ble:
     service-uuid: 8f3a0001-5c2e-4b7a-9d61-3e0f7a2b9c10
     nonce-char-uuid: 8f3a0002-5c2e-4b7a-9d61-3e0f7a2b9c10
@@ -59,7 +80,6 @@ app:
       geo-mode: "OFF"
       ble-mode: "OFF"
       frame-capture: true
-      require-roster: true
     max-clock-rtt-ms: 800
     max-geo-accuracy-m: 150
     ble-clears-latency: true

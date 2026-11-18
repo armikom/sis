@@ -158,6 +158,12 @@ import type { SessionDto, AttendanceDto, AttemptDto, AttemptRejectedEvent, Roste
                       @for (e of r.errors; track $index) { <li>{{ e }}</li> }
                     </ul>
                   }
+                  @if (r.notInRoster?.length) {
+                    <div class="mt-md">{{ msg.dashboard.bulkNotInRoster(r.notInRoster!.length) }}</div>
+                    <ul class="import-errors">
+                      @for (n of r.notInRoster; track n) { <li class="text-mono">{{ n }}</li> }
+                    </ul>
+                  }
                 </div>
               }
               @if (dialogError()) { <p class="form-error" role="alert">{{ dialogError() }}</p> }

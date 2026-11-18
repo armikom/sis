@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 /**
- * In-memory rate limiting for public POST endpoints and the login endpoint (05 §7).
+ * In-memory rate limiting for public POST endpoints and the sign-in endpoints (05 §7).
  */
 @Component
 public class RateLimitFilter extends OncePerRequestFilter {
@@ -47,7 +47,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         if (!"POST".equals(request.getMethod())) return true;
         String uri = request.getRequestURI();
-        return !(uri.startsWith("/api/public/") || uri.equals("/api/auth/login"));
+        return !(uri.startsWith("/api/public/") || uri.equals("/api/auth/login")
+                || uri.equals("/api/auth/request") || uri.equals("/api/auth/verify"));
     }
 
     @Override
@@ -60,6 +61,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
         List<Bucket> toCheck = new ArrayList<>(3);
         if (uri.equals("/api/auth/login")) {
             toCheck.add(bucket("login:" + ip, limits.loginPerIpPerMinute(), Duration.ofMinutes(1)));
+        } else if (uri.equals("/api/auth/request") || uri.equals("/api/auth/verify")) {
+            toCheck.add(bucket("link:" + ip, limits.authRequestPerIpPerMinute(), Duration.ofMinutes(1)));
         } else {
             toCheck.add(bucket("ip:" + ip, limits.perIpPerMinute(), Duration.ofMinutes(1)));
             String device = deviceId(request);

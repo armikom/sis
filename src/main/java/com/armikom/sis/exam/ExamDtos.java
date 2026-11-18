@@ -13,31 +13,40 @@ public final class ExamDtos {
     // ---- definitions ---------------------------------------------------------------------------
 
     public record QuestionDto(long id, int position, QuestionType type, String text, String topic,
-                              BigDecimal maxPoints, Integer choiceCount, String correctChoice) {}
+                              BigDecimal maxPoints, Integer choiceCount, String correctChoice, Long poolQuestionId) {}
 
     public record ExamDto(long id, long courseId, String courseCode, String courseName, String title,
-                          LocalDate examDate, BigDecimal totalPoints, long resultCount, String createdAt,
-                          List<QuestionDto> questions) {}
+                          LocalDate examDate, int forms, Long seed, BigDecimal totalPoints, long resultCount,
+                          String createdAt, List<QuestionDto> questions) {}
 
-    public record ExamSummaryDto(long id, long courseId, String title, LocalDate examDate, int questionCount,
-                                 BigDecimal totalPoints, long resultCount, BigDecimal averagePoints,
-                                 String createdAt) {}
+    public record ExamSummaryDto(long id, long courseId, String title, LocalDate examDate, int forms,
+                                 int questionCount, BigDecimal totalPoints, long resultCount,
+                                 BigDecimal averagePoints, String createdAt) {}
 
     public record QuestionRequest(Long id, QuestionType type, String text, String topic, BigDecimal maxPoints,
-                                  Integer choiceCount, String correctChoice) {}
+                                  Integer choiceCount, String correctChoice, Long poolQuestionId) {}
 
-    public record ExamRequest(String title, LocalDate examDate, List<QuestionRequest> questions) {}
+    /** {@code forms} (1-4) and {@code seed} are optional; null keeps the current value (1 / none on create). */
+    public record ExamRequest(String title, LocalDate examDate, List<QuestionRequest> questions, Integer forms,
+                              Long seed) {}
 
     // ---- results -------------------------------------------------------------------------------
 
     public record AnswerDto(long questionId, String answer, BigDecimal points) {}
 
-    public record ExamResultDto(long id, String studentNo, String fullName, String note, BigDecimal totalPoints,
-                                int gradedCount, boolean complete, String updatedAt, List<AnswerDto> answers) {}
+    public record ExamResultDto(long id, long personId, String studentNo, String fullName, String form, String note,
+                                BigDecimal totalPoints, int gradedCount, boolean complete, String updatedAt,
+                                List<AnswerDto> answers) {}
 
     public record AnswerRequest(Long questionId, String answer, BigDecimal points) {}
 
-    public record ExamResultRequest(String fullName, String note, List<AnswerRequest> answers) {}
+    /** {@code fullName} is ignored (the roster name is used); kept for request compatibility. */
+    public record ExamResultRequest(String fullName, String note, List<AnswerRequest> answers, String form) {}
+
+    // ---- student self-service -----------------------------------------------------------------
+
+    /** One exam total of the signed-in student ({@code GET /api/courses/{id}/my-results}). */
+    public record MyResultDto(long examId, String title, LocalDate examDate, BigDecimal points, BigDecimal maxPoints) {}
 
     // ---- exam analysis -------------------------------------------------------------------------
 

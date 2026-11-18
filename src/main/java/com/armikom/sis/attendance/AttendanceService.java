@@ -7,8 +7,8 @@ import com.armikom.sis.common.ApiException;
 import com.armikom.sis.common.ErrorCode;
 import com.armikom.sis.common.Strings;
 import com.armikom.sis.config.AppProperties;
-import com.armikom.sis.course.RosterEntry;
-import com.armikom.sis.course.RosterEntryRepository;
+import com.armikom.sis.core.course.EnrollmentRepository;
+import com.armikom.sis.core.course.RosterStudent;
 import com.armikom.sis.decision.Flag;
 import com.armikom.sis.frames.FrameStorage;
 import com.armikom.sis.live.LiveEvents;
@@ -32,7 +32,7 @@ import java.util.stream.Collectors;
 public class AttendanceService {
 
     private final AttendanceRepository repo;
-    private final RosterEntryRepository rosterRepo;
+    private final EnrollmentRepository enrollmentRepo;
     private final CheckinAttemptRepository attemptRepo;
     private final SessionService sessionService;
     private final FrameStorage frameStorage;
@@ -44,11 +44,11 @@ public class AttendanceService {
     /** A rejected/blocked attempt together with the record that collided with it, if any. */
     public record AttemptView(CheckinAttempt attempt, String conflictStudentNo) {}
 
-    public AttendanceService(AttendanceRepository repo, RosterEntryRepository rosterRepo,
+    public AttendanceService(AttendanceRepository repo, EnrollmentRepository enrollmentRepo,
                              CheckinAttemptRepository attemptRepo, SessionService sessionService,
                              FrameStorage frameStorage, LiveEvents liveEvents, AppProperties props, Clock clock) {
         this.repo = repo;
-        this.rosterRepo = rosterRepo;
+        this.enrollmentRepo = enrollmentRepo;
         this.attemptRepo = attemptRepo;
         this.sessionService = sessionService;
         this.frameStorage = frameStorage;
@@ -100,14 +100,15 @@ public class AttendanceService {
         if (!studentNoPattern.matcher(no).matches()) {
             throw new ApiException(ErrorCode.VALIDATION_ERROR, Map.of("studentNo", "Geçersiz format"));
         }
-        if (repo.existsBySession_IdAndStudentNo(sessionId, no)) {
+        RosterStudent student = enrollmentRepo.rosterStudent(session.getCourse().getId(), no)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_IN_ROSTER));
+        if (repo.existsBySession_IdAndStudentNo(sessionId, no) || repo.existsBySession_IdAndPersonId(sessionId, student.personId())) {
             throw new ApiException(ErrorCode.ALREADY_CHECKED_IN);
         }
-        String fullName = rosterRepo.findByCourseIdAndStudentNo(session.getCourse().getId(), no)
-                .map(RosterEntry::getFullName).orElse(null);
         Instant now = Instant.now(clock);
-        Attendance att = new Attendance(session, no, AttendanceSource.MANUAL, AttendanceStatus.ACCEPTED, now);
-        att.setFullName(fullName);
+        Attendance att = new Attendance(session, student.personId(), no, AttendanceSource.MANUAL,
+                AttendanceStatus.ACCEPTED, now);
+        att.setFullName(student.fullName());
         att.setTeacherDecision(TeacherDecision.APPROVED);
         att.setTeacherNote(Strings.clip(note, 500));
         att.setDecidedAt(now);
@@ -116,7 +117,8 @@ public class AttendanceService {
         return att;
     }
 
-    public record BulkResult(int added, int skipped, List<String> errors) {}
+    /** {@code notInRoster}: numbers that are not on the course roster (not recorded). */
+    public record BulkResult(int added, int skipped, List<String> errors, List<String> notInRoster) {}
 
     @Transactional
     public BulkResult bulkAdd(long sessionId, List<String> studentNumbers, String note) {
@@ -124,6 +126,7 @@ public class AttendanceService {
         int added = 0;
         int skipped = 0;
         List<String> errors = new java.util.ArrayList<>();
+        List<String> notInRoster = new java.util.ArrayList<>();
         Instant now = Instant.now(clock);
 
         for (String raw : studentNumbers) {
@@ -133,14 +136,19 @@ public class AttendanceService {
                 errors.add(no + ": Geçersiz format");
                 continue;
             }
-            if (repo.existsBySession_IdAndStudentNo(sessionId, no)) {
+            var student = enrollmentRepo.rosterStudent(session.getCourse().getId(), no);
+            if (student.isEmpty()) {
+                if (!notInRoster.contains(no)) notInRoster.add(no);
+                continue;
+            }
+            if (repo.existsBySession_IdAndStudentNo(sessionId, no)
+                    || repo.existsBySession_IdAndPersonId(sessionId, student.get().personId())) {
                 skipped++;
                 continue;
             }
-            String fullName = rosterRepo.findByCourseIdAndStudentNo(session.getCourse().getId(), no)
-                    .map(RosterEntry::getFullName).orElse(null);
-            Attendance att = new Attendance(session, no, AttendanceSource.MANUAL, AttendanceStatus.ACCEPTED, now);
-            att.setFullName(fullName);
+            Attendance att = new Attendance(session, student.get().personId(), no, AttendanceSource.MANUAL,
+                    AttendanceStatus.ACCEPTED, now);
+            att.setFullName(student.get().fullName());
             att.setTeacherDecision(TeacherDecision.APPROVED);
             att.setTeacherNote(Strings.clip(note, 500));
             att.setDecidedAt(now);
@@ -148,7 +156,7 @@ public class AttendanceService {
             liveEvents.attendanceChanged(att);
             added++;
         }
-        return new BulkResult(added, skipped, errors);
+        return new BulkResult(added, skipped, errors, notInRoster);
     }
 
     @Transactional

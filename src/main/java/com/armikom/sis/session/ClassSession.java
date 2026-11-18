@@ -1,7 +1,7 @@
 package com.armikom.sis.session;
 
 import com.armikom.sis.classroom.Classroom;
-import com.armikom.sis.course.Course;
+import com.armikom.sis.core.course.Course;
 import jakarta.persistence.*;
 import java.time.Instant;
 
@@ -55,9 +55,6 @@ public class ClassSession {
 
     @Column(name = "screen_area_ratio_threshold", nullable = false)
     private double screenAreaRatioThreshold;
-
-    @Column(name = "require_roster", nullable = false)
-    private boolean requireRoster;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "geo_mode", nullable = false, length = 16)
@@ -128,8 +125,6 @@ public class ClassSession {
     public void setDefaultLatencyThresholdMs(int v) { this.defaultLatencyThresholdMs = v; }
     public double getScreenAreaRatioThreshold() { return screenAreaRatioThreshold; }
     public void setScreenAreaRatioThreshold(double v) { this.screenAreaRatioThreshold = v; }
-    public boolean isRequireRoster() { return requireRoster; }
-    public void setRequireRoster(boolean requireRoster) { this.requireRoster = requireRoster; }
     public GeoMode getGeoMode() { return geoMode; }
     public void setGeoMode(GeoMode geoMode) { this.geoMode = geoMode; }
     public BleMode getBleMode() { return bleMode; }

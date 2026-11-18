@@ -34,7 +34,7 @@ public class SessionController {
                                    int durationMinutes, int refreshMs, int requiredScans,
                                    int maxSpanSlots, int maxTokenAgeMs, int latencyMarginMs,
                                    int defaultLatencyThresholdMs, double screenAreaRatioThreshold,
-                                   boolean requireRoster, String geoMode, String bleMode,
+                                   String geoMode, String bleMode,
                                    boolean frameCapture,
                                    Long epochStartMs, String openedAt, String closesAt, String closedAt,
                                    Integer baselineLatencyMs, Double baselineAreaRatioMax,
@@ -46,7 +46,7 @@ public class SessionController {
     public record CreateSessionRequest(@NotNull Long courseId, Long classroomId,
                                        @NotBlank String title, Integer durationMinutes,
                                        Integer refreshMs, Integer requiredScans,
-                                       Boolean requireRoster, String geoMode, String bleMode,
+                                       String geoMode, String bleMode,
                                        Boolean frameCapture) {}
 
     public record ExtendRequest(@NotNull Integer minutes) {}
@@ -75,7 +75,7 @@ public class SessionController {
     public SessionDetailDto create(@Valid @RequestBody CreateSessionRequest req) {
         ClassSession s = service.create(new SessionService.CreateCommand(req.courseId(), req.classroomId(),
                 req.title(), req.durationMinutes(), req.refreshMs(), req.requiredScans(),
-                req.requireRoster(), req.geoMode(), req.bleMode(), req.frameCapture()));
+                req.geoMode(), req.bleMode(), req.frameCapture()));
         return toDetail(s);
     }
 
@@ -163,7 +163,7 @@ public class SessionController {
                 s.getDurationMinutes(), s.getRefreshMs(), s.getRequiredScans(),
                 s.getMaxSpanSlots(), s.getMaxTokenAgeMs(), s.getLatencyMarginMs(),
                 s.getDefaultLatencyThresholdMs(), s.getScreenAreaRatioThreshold(),
-                s.isRequireRoster(), s.getGeoMode().name(), s.getBleMode().name(),
+                s.getGeoMode().name(), s.getBleMode().name(),
                 s.isFrameCapture(),
                 s.getEpochStartMs(),
                 s.getOpenedAt() != null ? s.getOpenedAt().toString() : null,

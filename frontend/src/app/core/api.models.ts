@@ -1,9 +1,48 @@
-export interface AuthUser { id: number; username: string; displayName: string; role: string; }
-export interface ApiError { code: string; message: string; details?: Record<string, unknown>; }
+export type EnrollmentRole = 'OWNER' | 'INSTRUCTOR' | 'ASSISTANT' | 'STUDENT';
 
-export interface CourseDto { id: number; code: string; name: string; rosterCount: number; createdAt: string; }
-export interface RosterEntryDto { studentNo: string; fullName: string; }
-export interface RosterImportResult { imported: number; skipped: number; errors: { line: number; message: string }[]; }
+/** One course of the signed-in person (GET /api/auth/me). */
+export interface MyCourseDto {
+  id: number; code: string; name: string; term: string; language: string; role: EnrollmentRole;
+  attendanceEnabled: boolean; poolEnabled: boolean; archived: boolean;
+}
+/** GET /api/auth/me. `staff`: staff of at least one course, or a system admin. */
+export interface MeDto {
+  id: number; fullName: string; email: string | null; studentNo: string | null; nickname: string;
+  username: string | null; systemAdmin: boolean; staff: boolean; courses: MyCourseDto[];
+}
+/** @deprecated use MeDto */
+export type AuthUser = MeDto;
+export interface ApiError { code: string; message: string; details?: Record<string, unknown>; }
+export interface LinkRequestResult { ok: boolean; onRoster: boolean; }
+
+export interface CourseDto {
+  id: number; code: string; name: string; term: string; language: string;
+  attendanceEnabled: boolean; poolEnabled: boolean; questionsPerChapter: number; askAiPerDay: number;
+  aiContext: string | null; archived: boolean; archivedAt: string | null; createdAt: string;
+  rosterCount: number; myRole: EnrollmentRole | null; staff: boolean; owner: boolean;
+}
+export interface CourseRequest {
+  code?: string; name?: string; term?: string; language?: string; attendanceEnabled?: boolean; poolEnabled?: boolean;
+  questionsPerChapter?: number; askAiPerDay?: number; aiContext?: string;
+}
+/** personId / email are set on rows from GET /roster; exam screens also build rows from results. */
+export interface RosterEntryDto { personId?: number; studentNo: string; fullName: string; email?: string | null; }
+export interface RosterImportResult {
+  imported: number; created?: number; updated?: number; reactivated?: number; removed?: number;
+  skipped: number; errors: { line: number; message: string }[];
+}
+export interface StaffMemberDto { personId: number; fullName: string; email: string | null; nickname: string; role: EnrollmentRole; }
+export interface PersonDto {
+  id: number; fullName: string; email: string | null; studentNo: string | null; username: string | null;
+  nickname: string; systemAdmin: boolean; active: boolean; deleted: boolean; hasPassword: boolean;
+  createdAt: string; lastLoginAt: string | null;
+}
+export interface PersonRequest {
+  fullName?: string; email?: string; studentNo?: string; username?: string; password?: string;
+  active?: boolean; systemAdmin?: boolean;
+}
+export interface MyAttendanceDto { sessionId: number; title: string; date: string; present: boolean; }
+export interface MyResultDto { examId: number; title: string; examDate: string | null; points: number; maxPoints: number; }
 
 export interface ClassroomDto { id: number; name: string; latitude?: number; longitude?: number; radiusM?: number; bleBeaconId?: string; hasBleKey: boolean; }
 export interface BleKeyResult { beaconId: string; keyHex: string; }
@@ -14,7 +53,7 @@ export interface SessionDto {
   durationMinutes: number; refreshMs: number; requiredScans: number;
   maxSpanSlots: number; maxTokenAgeMs: number; latencyMarginMs: number;
   defaultLatencyThresholdMs: number; screenAreaRatioThreshold: number;
-  requireRoster: boolean; geoMode: string; bleMode: string; frameCapture: boolean;
+  geoMode: string; bleMode: string; frameCapture: boolean;
   epochStartMs?: number; openedAt?: string; closesAt?: string; closedAt?: string;
   baselineLatencyMs?: number; baselineAreaRatioMax?: number;
   effectiveLatencyThresholdMs: number; effectiveAreaThreshold: number; thresholdSource: string;
@@ -43,7 +82,7 @@ export interface AttemptDto {
   studentNo: string; resultCode: string; deviceHint?: string;
   conflictStudentNo?: string; createdAt: string;
 }
-export interface BulkAttendanceResult { added: number; skipped: number; errors: string[]; }
+export interface BulkAttendanceResult { added: number; skipped: number; errors: string[]; notInRoster?: string[]; }
 
 export interface CalibrationRunDto { id: number; label: string; minLatencyMs: number; maxAreaRatio: number; validScanCount: number; createdAt: string; }
 
@@ -60,7 +99,6 @@ export interface BleNonceResponse { nonce: string; expiresInMs: number; serviceU
 export interface BleVerifyResponse { verified: boolean; }
 export interface CompleteResponse { result: string; studentNo: string; studentName?: string; recordedAt: string; }
 
-export interface TeacherDto { id: number; username: string; displayName: string; role: string; enabled: boolean; }
 export interface AttemptRejectedEvent {
   studentNo: string; code: string; deviceHint?: string; conflictStudentNo?: string; at: string;
 }
@@ -70,7 +108,7 @@ export interface SessionSseEvent { status: string; closesAt?: string; attendance
 export type QuestionType = 'CHOICE' | 'OPEN' | 'FREE';
 export interface QuestionDto {
   id: number; position: number; type: QuestionType; text: string | null; topic: string | null;
-  maxPoints: number; choiceCount: number | null; correctChoice: string | null;
+  maxPoints: number; choiceCount: number | null; correctChoice: string | null; poolQuestionId?: number | null;
 }
 export interface QuestionRequest {
   id?: number | null; type: QuestionType; text?: string | null; topic?: string | null;
@@ -78,7 +116,8 @@ export interface QuestionRequest {
 }
 export interface ExamDto {
   id: number; courseId: number; courseCode: string; courseName: string; title: string;
-  examDate: string | null; totalPoints: number; resultCount: number; createdAt: string; questions: QuestionDto[];
+  examDate: string | null; forms?: number; seed?: number | null;
+  totalPoints: number; resultCount: number; createdAt: string; questions: QuestionDto[];
 }
 export interface ExamSummaryDto {
   id: number; courseId: number; title: string; examDate: string | null; questionCount: number;
@@ -87,7 +126,7 @@ export interface ExamSummaryDto {
 export interface ExamRequest { title: string; examDate?: string | null; questions: QuestionRequest[]; }
 export interface ExamAnswerDto { questionId: number; answer: string | null; points: number | null; }
 export interface ExamResultDto {
-  id: number; studentNo: string; fullName: string; note: string | null; totalPoints: number;
+  id: number; personId?: number; studentNo: string; fullName: string; form?: string | null; note: string | null; totalPoints: number;
   gradedCount: number; complete: boolean; updatedAt: string; answers: ExamAnswerDto[];
 }
 export interface ExamResultRequest { fullName?: string | null; note?: string | null; answers: ExamAnswerDto[]; }

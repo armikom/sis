@@ -7,10 +7,9 @@ import com.armikom.sis.security.DeviceHint;
 import com.armikom.sis.security.RateLimitFilter;
 import com.armikom.sis.support.MutableClock;
 import com.armikom.sis.support.TestClockConfig;
+import com.armikom.sis.support.PostgresTestcontainer;
+import com.armikom.sis.support.TestPeople;
 import com.armikom.sis.support.TestTokens;
-import com.armikom.sis.teacher.TeacherRole;
-import com.armikom.sis.teacher.TeacherUser;
-import com.armikom.sis.teacher.TeacherUserRepository;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,9 +19,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.MediaType;
-import org.springframework.mock.web.MockHttpSession;
 import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -49,7 +46,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -57,7 +53,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@Import(TestClockConfig.class)
+@Import({TestClockConfig.class, PostgresTestcontainer.class, TestPeople.Config.class})
 class ApiIntegrationTest {
 
     static final AtomicInteger COUNTER = new AtomicInteger(10_000);
@@ -68,26 +64,29 @@ class ApiIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired JsonMapper json;
     @Autowired MutableClock clock;
-    @Autowired TeacherUserRepository teachers;
-    @Autowired PasswordEncoder encoder;
+    @Autowired TestPeople people;
     @Autowired RateLimitFilter rateLimit;
     @Autowired DeviceHint deviceHint;
     @MockitoSpyBean SseHub sseHub;
 
+    /** Session code → course id, so check-ins can put their student number on the roster first. */
+    final Map<String, Long> courseOfCode = new HashMap<>();
+    /** Numbers that must stay off the roster (roster-only check-in tests). */
+    final java.util.Set<String> keepOffRoster = new java.util.HashSet<>();
+    static TestPeople PEOPLE;
+
     @BeforeEach
     void setUp() {
-        for (String name : List.of("t1", "t2")) {
-            if (!teachers.existsByUsername(name)) {
-                teachers.save(new TeacherUser(name, encoder.encode("parola123"), "Öğretmen " + name, TeacherRole.TEACHER));
-            }
-        }
+        PEOPLE = people;
+        people.staff("t1");
+        people.staff("t2");
         rateLimit.clear();
     }
 
     // ---- helpers ------------------------------------------------------------------------------
 
-    static RequestPostProcessor t1() { return user("t1").roles("TEACHER"); }
-    static RequestPostProcessor t2() { return user("t2").roles("TEACHER"); }
+    static RequestPostProcessor t1() { return PEOPLE.as("t1"); }
+    static RequestPostProcessor t2() { return PEOPLE.as("t2"); }
 
     static String studentNo() { return "2202" + COUNTER.incrementAndGet(); }
 
@@ -121,14 +120,17 @@ class ApiIntegrationTest {
     /** Creates and opens a session; returns its detail JSON. */
     JsonNode openSession(long courseId, Map<String, Object> extra) throws Exception {
         Map<String, Object> req = new HashMap<>(Map.of("courseId", courseId, "title", "Hafta 5",
-                "requireRoster", false, "frameCapture", false));
+                "frameCapture", false));
         req.putAll(extra);
+        req.remove("requireRoster");   // removed in SIS: check-in is always roster-only
         long id = body(mvc.perform(post("/api/sessions").with(t1()).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(toJson(req)))
                 .andExpect(status().isCreated())).get("id").asLong();
-        return body(mvc.perform(post("/api/sessions/" + id + "/open").with(t1()).with(csrf()))
+        JsonNode opened = body(mvc.perform(post("/api/sessions/" + id + "/open").with(t1()).with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("OPEN")));
+        courseOfCode.put(opened.get("code").asString(), courseId);
+        return opened;
     }
 
     JsonNode openSession(long courseId) throws Exception {
@@ -145,6 +147,11 @@ class ApiIntegrationTest {
     }
 
     ResultActions start(Cookie yd, String code, String no) throws Exception {
+        // SIS check-in is roster-only: put valid numbers on the session's roster unless a test keeps them off.
+        Long courseId = courseOfCode.get(code);
+        if (courseId != null && no.matches("^[0-9]{5,12}$") && !keepOffRoster.contains(no)) {
+            people.enroll(courseId, no, "Öğrenci " + no);
+        }
         return mvc.perform(post("/api/public/checkins").cookie(yd)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(toJson(Map.of("sessionCode", code.toLowerCase(), "studentNo", no,
@@ -219,11 +226,12 @@ class ApiIntegrationTest {
                         .content(toJson(Map.of("username", "t1", "password", "parola123"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.username").value("t1"))
-                .andExpect(jsonPath("$.role").value("TEACHER"))
+                .andExpect(jsonPath("$.staff").value(true))
+                .andExpect(jsonPath("$.systemAdmin").value(false))
                 .andReturn();
-        MockHttpSession http = (MockHttpSession) login.getRequest().getSession(false);
-        mvc.perform(get("/api/auth/me").session(http)).andExpect(status().isOk())
-                .andExpect(jsonPath("$.displayName").value("Öğretmen t1"));
+        Cookie session = login.getResponse().getCookie("sis_session");
+        mvc.perform(get("/api/auth/me").cookie(session)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.fullName").value("Öğretmen t1"));
 
         long courseId = createCourse(t1());
         // Duplicate course code for the same teacher is a 409, not a 500.
@@ -273,7 +281,7 @@ class ApiIntegrationTest {
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
         mvc.perform(get("/api/sessions/" + sessionId + "/attendances").with(t2()))
                 .andExpect(status().isForbidden());
-        mvc.perform(get("/api/admin/teachers").with(t1()))
+        mvc.perform(get("/api/admin/persons").with(t1()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("FORBIDDEN"));
 
@@ -576,7 +584,9 @@ class ApiIntegrationTest {
         long courseId = createCourse(t1());
         addRoster(courseId, studentNo(), "Biri");
         S s = S.of(openSession(courseId, Map.of("requireRoster", true)));
-        start(newDevice(), s.code(), studentNo())
+        String outsider = studentNo();
+        keepOffRoster.add(outsider);
+        start(newDevice(), s.code(), outsider)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("NOT_IN_ROSTER"));
         start(newDevice(), s.code(), "12")
@@ -705,7 +715,7 @@ class ApiIntegrationTest {
         String absent = studentNo();
         addRoster(courseId, present, "Gelen Öğrenci");
         addRoster(courseId, absent, "Gelmeyen Öğrenci");
-        // requireRoster=false: absentees are listed whenever a roster exists.
+        // Absentees are listed from the roster.
         S s = S.of(openSession(courseId));
         mvc.perform(post("/api/sessions/" + s.id() + "/attendances/manual").with(t1()).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content(toJson(Map.of("studentNo", present, "note", "=1+1"))))

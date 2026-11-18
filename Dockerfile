@@ -18,10 +18,10 @@ RUN ./mvnw clean package -DskipTests -B
 # ---- Stage 2: runtime ----
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
-COPY --from=build /build/target/yoklama-*.jar app.jar
-RUN addgroup -S yoklama && adduser -S yoklama -G yoklama
-RUN mkdir -p /app/data/frames && chown -R yoklama:yoklama /app
-USER yoklama
+COPY --from=build /build/target/sis-*.jar app.jar
+RUN addgroup -S sis && adduser -S sis -G sis
+RUN mkdir -p /app/data/frames && chown -R sis:sis /app
+USER sis
 EXPOSE 8080
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0"
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]

@@ -5,7 +5,7 @@ import com.armikom.sis.attendance.AttendanceSource;
 import com.armikom.sis.attendance.AttendanceStatus;
 import com.armikom.sis.attendance.TeacherDecision;
 import com.armikom.sis.config.MasterSecretConfig.MasterSecret;
-import com.armikom.sis.course.RosterEntry;
+import com.armikom.sis.core.course.RosterStudent;
 import com.armikom.sis.decision.Flag;
 import com.armikom.sis.security.DeviceHint;
 import org.junit.jupiter.api.Test;
@@ -35,7 +35,7 @@ class CsvExportServiceTest {
 
     @Test
     void rendersBomTurkishAndAbsentees() {
-        Attendance a = new Attendance(null, "220201001", AttendanceSource.CHECKIN, AttendanceStatus.FLAGGED,
+        Attendance a = new Attendance(null, 1L, "220201001", AttendanceSource.CHECKIN, AttendanceStatus.FLAGGED,
                 Instant.parse("2026-10-20T09:01:12Z"));
         a.setFullName("Ayşe Yılmaz");
         a.setFlags(EnumSet.of(Flag.SCREEN_SUSPECT, Flag.LATENCY_HIGH));
@@ -44,8 +44,8 @@ class CsvExportServiceTest {
         a.setTeacherDecision(TeacherDecision.NONE);
 
         String csv = service.render(List.of(a), List.of(
-                new RosterEntry(null, "220201001", "Ayşe Yılmaz"),
-                new RosterEntry(null, "220201002", "Çağlar Şişli")));
+                new RosterStudent(1L, "220201001", "Ayşe Yılmaz", null),
+                new RosterStudent(2L, "220201002", "Çağlar Şişli", null)));
 
         assertTrue(csv.startsWith("﻿ogrenciNo;adSoyad;durum;katildi;bayraklar;gecikmeMs;esikMs;kaynak;zaman;not;cihazIpucu\r\n"));
         String[] lines = csv.substring(1).split("\r\n");
@@ -58,7 +58,7 @@ class CsvExportServiceTest {
 
     @Test
     void rendersDeviceHintOfTheCheckinDevice() {
-        Attendance a = new Attendance(null, "220201001", AttendanceSource.CHECKIN, AttendanceStatus.ACCEPTED,
+        Attendance a = new Attendance(null, 1L, "220201001", AttendanceSource.CHECKIN, AttendanceStatus.ACCEPTED,
                 Instant.parse("2026-10-20T09:01:12Z"));
         a.setDeviceId(DEVICE);
 

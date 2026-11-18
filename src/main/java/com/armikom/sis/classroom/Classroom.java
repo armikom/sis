@@ -1,6 +1,6 @@
 package com.armikom.sis.classroom;
 
-import com.armikom.sis.teacher.TeacherUser;
+import com.armikom.sis.core.person.Person;
 import jakarta.persistence.*;
 import java.time.Instant;
 
@@ -14,7 +14,7 @@ public class Classroom {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id", nullable = false)
-    private TeacherUser owner;
+    private Person owner;
 
     @Column(nullable = false, length = 120)
     private String name;
@@ -36,14 +36,14 @@ public class Classroom {
 
     protected Classroom() {}
 
-    public Classroom(TeacherUser owner, String name) {
+    public Classroom(Person owner, String name) {
         this.owner = owner;
         this.name = name;
         this.createdAt = Instant.now();
     }
 
     public Long getId() { return id; }
-    public TeacherUser getOwner() { return owner; }
+    public Person getOwner() { return owner; }
     public Long getOwnerId() { return owner.getId(); }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }

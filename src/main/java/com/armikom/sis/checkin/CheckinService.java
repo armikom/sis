@@ -6,8 +6,8 @@ import com.armikom.sis.common.ApiException;
 import com.armikom.sis.common.ErrorCode;
 import com.armikom.sis.common.Strings;
 import com.armikom.sis.config.AppProperties;
-import com.armikom.sis.course.RosterEntry;
-import com.armikom.sis.course.RosterEntryRepository;
+import com.armikom.sis.core.course.EnrollmentRepository;
+import com.armikom.sis.core.course.RosterStudent;
 import com.armikom.sis.crypto.BleChallenge;
 import com.armikom.sis.decision.*;
 import com.armikom.sis.frames.FrameStorage;
@@ -49,7 +49,7 @@ public class CheckinService {
     private final CheckinAttemptRepository attemptRepo;
     private final ScanRecordRepository scanRepo;
     private final AttendanceRepository attendanceRepo;
-    private final RosterEntryRepository rosterRepo;
+    private final EnrollmentRepository enrollmentRepo;
     private final ScanValidator validator;
     private final DecisionEngine decisionEngine;
     private final SessionService sessionService;
@@ -65,7 +65,7 @@ public class CheckinService {
 
     public CheckinService(ClassSessionRepository sessionRepo, CheckinAttemptRepository attemptRepo,
                           ScanRecordRepository scanRepo, AttendanceRepository attendanceRepo,
-                          RosterEntryRepository rosterRepo, ScanValidator validator,
+                          EnrollmentRepository enrollmentRepo, ScanValidator validator,
                           DecisionEngine decisionEngine, SessionService sessionService,
                           FrameStorage frameStorage, LiveEvents liveEvents, AppProperties props,
                           Clock clock, PlatformTransactionManager txManager) {
@@ -73,7 +73,7 @@ public class CheckinService {
         this.attemptRepo = attemptRepo;
         this.scanRepo = scanRepo;
         this.attendanceRepo = attendanceRepo;
-        this.rosterRepo = rosterRepo;
+        this.enrollmentRepo = enrollmentRepo;
         this.validator = validator;
         this.decisionEngine = decisionEngine;
         this.sessionService = sessionService;
@@ -108,10 +108,9 @@ public class CheckinService {
             throw new ApiException(ErrorCode.SESSION_NOT_OPEN);
         }
 
-        Optional<RosterEntry> entry = rosterRepo.findByCourseIdAndStudentNo(session.getCourse().getId(), no);
-        if (session.isRequireRoster() && entry.isEmpty()) {
-            throw new ApiException(ErrorCode.NOT_IN_ROSTER);
-        }
+        // Roster-only check-in: the number must have a live STUDENT enrollment in the session's course.
+        RosterStudent student = enrollmentRepo.rosterStudent(session.getCourse().getId(), no)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_IN_ROSTER));
         if (attendanceRepo.existsBySession_IdAndStudentNo(session.getId(), no)) {
             throw rejectAtStart(session.getId(), no, deviceId, ip, userAgent, now,
                     ErrorCode.ALREADY_CHECKED_IN);
@@ -129,7 +128,7 @@ public class CheckinService {
                 Strings.clip(ip, 64), Strings.clip(userAgent, 512), now, expiresAt);
         attemptRepo.save(attempt);
 
-        return new StartResult(attempt.getId(), expiresAt, entry.map(RosterEntry::getFullName).orElse(null));
+        return new StartResult(attempt.getId(), expiresAt, student.fullName());
     }
 
     /**
@@ -378,7 +377,10 @@ public class CheckinService {
         );
         Decision decision = decisionEngine.evaluate(input);
 
-        Attendance att = new Attendance(session, attempt.getStudentNo(),
+        // The student may have left the roster since the attempt started.
+        RosterStudent student = enrollmentRepo.rosterStudent(session.getCourse().getId(), attempt.getStudentNo())
+                .orElseThrow(() -> new Rejection(ErrorCode.NOT_IN_ROSTER));
+        Attendance att = new Attendance(session, student.personId(), attempt.getStudentNo(),
                 AttendanceSource.CHECKIN, decision.status(), now);
         att.setAttemptId(attempt.getId());
         att.setDeviceId(attempt.getDeviceId());
@@ -401,10 +403,7 @@ public class CheckinService {
         att.setBleVerified(attempt.isBleVerified());
         att.setFramePath(attempt.getFramePath());
 
-        String studentName = rosterRepo.findByCourseIdAndStudentNo(
-                        session.getCourse().getId(), attempt.getStudentNo())
-                .map(RosterEntry::getFullName).orElse(null);
-        att.setFullName(studentName);
+        att.setFullName(student.fullName());
 
         try {
             attendanceRepo.saveAndFlush(att);
@@ -423,7 +422,7 @@ public class CheckinService {
                 decision.flags(), decision.minLatencyMs(), decision.latencyThresholdMs());
 
         liveEvents.attendanceChanged(att);
-        return new CompleteResponse("RECORDED", attempt.getStudentNo(), studentName, now.toString());
+        return new CompleteResponse("RECORDED", attempt.getStudentNo(), student.fullName(), now.toString());
     }
 
     private void markRejected(UUID attemptId, ErrorCode code) {

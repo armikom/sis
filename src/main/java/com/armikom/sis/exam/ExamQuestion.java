@@ -38,6 +38,10 @@ public class ExamQuestion {
     @Column(name = "correct_choice", length = 1)
     private String correctChoice;
 
+    /** The pool question this item was drawn from, if any. */
+    @Column(name = "pool_question_id")
+    private Long poolQuestionId;
+
     protected ExamQuestion() {}
 
     public ExamQuestion(Exam exam) {
@@ -60,4 +64,6 @@ public class ExamQuestion {
     public void setChoiceCount(Integer choiceCount) { this.choiceCount = choiceCount; }
     public String getCorrectChoice() { return correctChoice; }
     public void setCorrectChoice(String correctChoice) { this.correctChoice = correctChoice; }
+    public Long getPoolQuestionId() { return poolQuestionId; }
+    public void setPoolQuestionId(Long poolQuestionId) { this.poolQuestionId = poolQuestionId; }
 }

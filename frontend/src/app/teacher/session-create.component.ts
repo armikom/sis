@@ -61,10 +61,6 @@ import type { CourseDto, ClassroomDto } from '../core/api.models';
               @if (!selectedClassroom()?.hasBleKey) { <span class="text-sm text-secondary">BLE için anahtarı üretilmiş bir derslik seçin.</span> }
             </div>
             <div class="form-group" style="flex-direction:row;gap:var(--space-sm);align-items:center">
-              <input type="checkbox" [(ngModel)]="requireRoster" name="requireRoster" id="rr" />
-              <label for="rr">{{ msg.sessions.requireRoster }}</label>
-            </div>
-            <div class="form-group" style="flex-direction:row;gap:var(--space-sm);align-items:center">
               <input type="checkbox" [(ngModel)]="frameCapture" name="frameCapture" id="fc" />
               <label for="fc">{{ msg.sessions.frameCapture }}</label>
             </div>
@@ -97,7 +93,6 @@ export class SessionCreateComponent implements OnInit {
   requiredScans = 3;
   geoMode = 'OFF';
   bleMode = 'OFF';
-  requireRoster = true;
   frameCapture = true;
   openAfterCreate = false;
 
@@ -125,7 +120,6 @@ export class SessionCreateComponent implements OnInit {
       requiredScans: this.requiredScans,
       geoMode: this.geoMode,
       bleMode: this.bleMode,
-      requireRoster: this.requireRoster,
       frameCapture: this.frameCapture,
     };
     if (this.classroomId != null) data['classroomId'] = this.classroomId;

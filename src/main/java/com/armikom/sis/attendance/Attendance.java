@@ -20,6 +20,11 @@ public class Attendance {
     @JoinColumn(name = "session_id", nullable = false)
     private ClassSession session;
 
+    /** The enrolled student (mandatory: attendance is roster-only). */
+    @Column(name = "person_id", nullable = false)
+    private Long personId;
+
+    /** Snapshot of the student number when the row was written (exports, history). */
     @Column(name = "student_no", nullable = false, length = 32)
     private String studentNo;
 
@@ -111,9 +116,10 @@ public class Attendance {
 
     protected Attendance() {}
 
-    public Attendance(ClassSession session, String studentNo, AttendanceSource source, AttendanceStatus status,
-                      Instant createdAt) {
+    public Attendance(ClassSession session, Long personId, String studentNo, AttendanceSource source,
+                      AttendanceStatus status, Instant createdAt) {
         this.session = session;
+        this.personId = personId;
         this.studentNo = studentNo;
         this.source = source;
         this.status = status;
@@ -124,6 +130,7 @@ public class Attendance {
     public Long getId() { return id; }
     public ClassSession getSession() { return session; }
     public long getSessionId() { return session.getId(); }
+    public Long getPersonId() { return personId; }
     public String getStudentNo() { return studentNo; }
     public String getFullName() { return fullName; }
     public void setFullName(String fullName) { this.fullName = fullName; }

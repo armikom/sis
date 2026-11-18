@@ -2,6 +2,7 @@ import { Component, inject, signal, OnInit } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../core/api.service';
+import { AuthService } from '../core/auth.service';
 import { MSG } from '../shared/messages';
 import { errorMessage } from '../shared/errors';
 import type { CourseDto, SessionDto } from '../core/api.models';
@@ -26,6 +27,10 @@ import type { CourseDto, SessionDto } from '../core/api.models';
             <div class="form-group">
               <label>{{ msg.courses.name }}</label>
               <input class="form-input" [(ngModel)]="formName" name="name" required maxlength="200" />
+            </div>
+            <div class="form-group">
+              <label>{{ msg.courses.term }}</label>
+              <input class="form-input" [(ngModel)]="formTerm" name="term" maxlength="16" placeholder="Boş bırakılırsa bu dönem (ör. 2026-FALL)" />
             </div>
             @if (error()) { <p class="form-error" role="alert">{{ error() }}</p> }
             <div class="flex-gap">
@@ -58,10 +63,11 @@ import type { CourseDto, SessionDto } from '../core/api.models';
 
       @for (c of courses(); track c.id) {
         <div class="card mb-md course-card">
-          <a [routerLink]="['/t/courses', c.id]" class="course-link">
+          <a [routerLink]="[c.staff ? '/t/courses' : '/courses', c.id]" class="course-link">
             <strong>{{ c.code }}</strong> — {{ c.name }}
+            <div class="text-sm text-secondary">{{ c.term }}@if (c.myRole) { · {{ msg.staff.roles[c.myRole] }} }@if (c.archived) { · {{ msg.settings.archived }} }</div>
           </a>
-          <span class="badge badge-info">{{ c.rosterCount }} {{ msg.courses.students }}</span>
+          @if (c.staff) { <span class="badge badge-info">{{ c.rosterCount }} {{ msg.courses.students }}</span> }
         </div>
       }
     </div>
@@ -79,6 +85,7 @@ import type { CourseDto, SessionDto } from '../core/api.models';
 })
 export class CoursesComponent implements OnInit {
   private readonly api = inject(ApiService);
+  private readonly auth = inject(AuthService);
   readonly msg = MSG;
   courses = signal<CourseDto[]>([]);
   openSessions = signal<SessionDto[]>([]);
@@ -87,6 +94,7 @@ export class CoursesComponent implements OnInit {
   editId: number | null = null;
   formCode = '';
   formName = '';
+  formTerm = '';
 
   async ngOnInit() {
     try { await this.load(); } catch (e) { this.error.set(errorMessage(e)); }
@@ -115,16 +123,19 @@ export class CoursesComponent implements OnInit {
     this.editId = null;
     this.formCode = '';
     this.formName = '';
+    this.formTerm = '';
   }
 
   async save() {
     this.error.set('');
-    const body = { code: this.formCode.trim(), name: this.formName.trim() };
+    const term = this.formTerm.trim();
+    const body = { code: this.formCode.trim(), name: this.formName.trim(), ...(term ? { term } : {}) };
     try {
       if (this.editId) await this.api.updateCourse(this.editId, body);
       else await this.api.createCourse(body);
       this.cancelForm();
       await this.load();
+      await this.auth.refresh();   // my roles changed (creator becomes OWNER)
     } catch (e) {
       this.error.set(errorMessage(e));
     }

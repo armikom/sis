@@ -4,8 +4,8 @@ import com.armikom.sis.attendance.Attendance;
 import com.armikom.sis.attendance.AttendanceRepository;
 import com.armikom.sis.attendance.AttendanceStatus;
 import com.armikom.sis.attendance.TeacherDecision;
-import com.armikom.sis.course.RosterEntry;
-import com.armikom.sis.course.RosterEntryRepository;
+import com.armikom.sis.core.course.EnrollmentRepository;
+import com.armikom.sis.core.course.RosterStudent;
 import com.armikom.sis.decision.Flag;
 import com.armikom.sis.security.DeviceHint;
 import com.armikom.sis.session.ClassSession;
@@ -29,15 +29,15 @@ public class CsvExportService {
             "cihazIpucu");
 
     private final AttendanceRepository attRepo;
-    private final RosterEntryRepository rosterRepo;
+    private final EnrollmentRepository enrollmentRepo;
     private final SessionService sessionService;
     private final DeviceHint deviceHint;
     private final DateTimeFormatter timeFormat;
 
-    public CsvExportService(AttendanceRepository attRepo, RosterEntryRepository rosterRepo,
+    public CsvExportService(AttendanceRepository attRepo, EnrollmentRepository enrollmentRepo,
                             SessionService sessionService, DeviceHint deviceHint) {
         this.attRepo = attRepo;
-        this.rosterRepo = rosterRepo;
+        this.enrollmentRepo = enrollmentRepo;
         this.sessionService = sessionService;
         this.deviceHint = deviceHint;
         this.timeFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
@@ -50,11 +50,11 @@ public class CsvExportService {
         ClassSession session = sessionService.get(sessionId);
         List<Attendance> attendances = new ArrayList<>(attRepo.findBySession_IdOrderByCreatedAtDesc(sessionId));
         attendances.sort(Comparator.comparing(Attendance::getStudentNo));
-        List<RosterEntry> roster = rosterRepo.findByCourseIdOrderByStudentNoAsc(session.getCourse().getId());
+        List<RosterStudent> roster = enrollmentRepo.roster(session.getCourse().getId());
         return new Export(filename(session), render(attendances, roster));
     }
 
-    String render(List<Attendance> attendances, List<RosterEntry> roster) {
+    String render(List<Attendance> attendances, List<RosterStudent> roster) {
         Set<String> checkedIn = attendances.stream().map(Attendance::getStudentNo).collect(Collectors.toSet());
         StringBuilder sb = new StringBuilder(BOM).append(HEADER).append(NL);
         for (Attendance a : attendances) {
@@ -71,9 +71,9 @@ public class CsvExportService {
                     deviceHint.of(a.getDeviceId()));
         }
         // Students on the roster who did not attend (04 §4.6: "Roster varsa").
-        for (RosterEntry r : roster) {
-            if (!checkedIn.contains(r.getStudentNo())) {
-                row(sb, r.getStudentNo(), r.getFullName(), "GELMEDI", "HAYIR", "", "", "", "", "", "", "");
+        for (RosterStudent r : roster) {
+            if (r.studentNo() != null && !checkedIn.contains(r.studentNo())) {
+                row(sb, r.studentNo(), r.fullName(), "GELMEDI", "HAYIR", "", "", "", "", "", "", "");
             }
         }
         return sb.toString();

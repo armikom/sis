@@ -9,28 +9,40 @@ export class ApiService {
 
   /* Auth */
   csrf() { return firstValueFrom(this.http.get('/api/auth/csrf', { responseType: 'text', observe: 'response' })); }
-  login(username: string, password: string) { return firstValueFrom(this.http.post<M.AuthUser>('/api/auth/login', { username, password })); }
+  login(username: string, password: string) { return firstValueFrom(this.http.post<M.MeDto>('/api/auth/login', { username, password })); }
+  requestLink(email: string) { return firstValueFrom(this.http.post<M.LinkRequestResult>('/api/auth/request', { email })); }
+  verifyLink(token: string) { return firstValueFrom(this.http.post<M.MeDto>('/api/auth/verify', { token })); }
   logout() { return firstValueFrom(this.http.post<void>('/api/auth/logout', {})); }
-  me() { return firstValueFrom(this.http.get<M.AuthUser>('/api/auth/me')); }
+  me() { return firstValueFrom(this.http.get<M.MeDto>('/api/auth/me')); }
 
-  /* Teachers (admin) */
-  getTeachers() { return firstValueFrom(this.http.get<M.TeacherDto[]>('/api/admin/teachers')); }
-  createTeacher(t: { username: string; password: string; displayName: string; role: string }) { return firstValueFrom(this.http.post<M.TeacherDto>('/api/admin/teachers', t)); }
-  updateTeacher(id: number, t: Partial<{ displayName: string; password: string; enabled: boolean }>) { return firstValueFrom(this.http.patch<M.TeacherDto>(`/api/admin/teachers/${id}`, t)); }
+  /* People (system admin) */
+  getPersons(q = '') { return firstValueFrom(this.http.get<M.PersonDto[]>('/api/admin/persons', { params: { q } })); }
+  createPerson(p: M.PersonRequest) { return firstValueFrom(this.http.post<M.PersonDto>('/api/admin/persons', p)); }
+  updatePerson(id: number, p: M.PersonRequest) { return firstValueFrom(this.http.patch<M.PersonDto>(`/api/admin/persons/${id}`, p)); }
+  deletePerson(id: number) { return firstValueFrom(this.http.delete<void>(`/api/admin/persons/${id}`)); }
 
   /* Courses */
   getCourse(id: number | string) { return firstValueFrom(this.http.get<M.CourseDto>(`/api/courses/${id}`)); }
   getCourses() { return firstValueFrom(this.http.get<M.CourseDto[]>('/api/courses')); }
-  createCourse(c: { code: string; name: string }) { return firstValueFrom(this.http.post<M.CourseDto>('/api/courses', c)); }
-  updateCourse(id: number, c: { code: string; name: string }) { return firstValueFrom(this.http.put<M.CourseDto>(`/api/courses/${id}`, c)); }
+  createCourse(c: M.CourseRequest) { return firstValueFrom(this.http.post<M.CourseDto>('/api/courses', c)); }
+  updateCourse(id: number, c: M.CourseRequest) { return firstValueFrom(this.http.put<M.CourseDto>(`/api/courses/${id}`, c)); }
+  archiveCourse(id: number, archived: boolean) { return firstValueFrom(this.http.post<M.CourseDto>(`/api/courses/${id}/${archived ? 'archive' : 'unarchive'}`, {})); }
   deleteCourse(id: number) { return firstValueFrom(this.http.delete<void>(`/api/courses/${id}`)); }
   getRoster(courseId: number) { return firstValueFrom(this.http.get<M.RosterEntryDto[]>(`/api/courses/${courseId}/roster`)); }
   importRoster(courseId: number, file: File, mode: string) {
     const fd = new FormData(); fd.append('file', file);
     return firstValueFrom(this.http.post<M.RosterImportResult>(`/api/courses/${courseId}/roster/import`, fd, { params: { mode } }));
   }
-  addRosterEntry(courseId: number, e: { studentNo: string; fullName: string }) { return firstValueFrom(this.http.post<M.RosterEntryDto>(`/api/courses/${courseId}/roster`, e)); }
-  deleteRosterEntry(courseId: number, studentNo: string) { return firstValueFrom(this.http.delete<void>(`/api/courses/${courseId}/roster/${encodeURIComponent(studentNo)}`)); }
+  importRosterText(courseId: number, text: string, mode: string) { return firstValueFrom(this.http.post<M.RosterImportResult>(`/api/courses/${courseId}/roster/import`, { text, mode })); }
+  addRosterEntry(courseId: number, e: { studentNo: string; fullName: string; email?: string }) { return firstValueFrom(this.http.post<M.RosterEntryDto>(`/api/courses/${courseId}/roster`, e)); }
+  deleteRosterEntry(courseId: number, personId: number) { return firstValueFrom(this.http.delete<void>(`/api/courses/${courseId}/roster/${personId}`)); }
+  getStaff(courseId: number) { return firstValueFrom(this.http.get<M.StaffMemberDto[]>(`/api/courses/${courseId}/staff`)); }
+  addStaff(courseId: number, s: { email: string; fullName: string; role: string }) { return firstValueFrom(this.http.post<M.StaffMemberDto>(`/api/courses/${courseId}/staff`, s)); }
+  removeStaff(courseId: number, personId: number) { return firstValueFrom(this.http.delete<void>(`/api/courses/${courseId}/staff/${personId}`)); }
+
+  /* Student self-service */
+  getMyAttendance(courseId: number | string) { return firstValueFrom(this.http.get<M.MyAttendanceDto[]>(`/api/courses/${courseId}/my-attendance`)); }
+  getMyResults(courseId: number | string) { return firstValueFrom(this.http.get<M.MyResultDto[]>(`/api/courses/${courseId}/my-results`)); }
 
   /* Classrooms */
   getClassrooms() { return firstValueFrom(this.http.get<M.ClassroomDto[]>('/api/classrooms')); }

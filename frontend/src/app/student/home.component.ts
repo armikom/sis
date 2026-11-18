@@ -18,7 +18,7 @@ const CODE_LENGTH = 6;
         </svg>
       </div>
       <h1>{{ msg.appTitle }}</h1>
-      <p class="subtitle">Dönen QR ile sınıf yoklama sistemi</p>
+      <p class="subtitle">{{ msg.appSubtitle }}</p>
       <form (ngSubmit)="go()" class="card code-form">
         <label for="code" class="code-label">{{ msg.student.enterCode }}</label>
         <input #codeEl id="code" class="form-input code-input" [value]="code()" (input)="onInput(codeEl)" name="code"
@@ -28,7 +28,7 @@ const CODE_LENGTH = 6;
         <div id="code-hint" class="text-sm text-secondary">{{ msg.student.codeHint }}</div>
         <button class="btn btn-primary btn-block" [disabled]="code().length !== codeLength">{{ msg.student.continue }}</button>
       </form>
-      <a routerLink="/t/login" class="link">Öğretim üyesi girişi</a>
+      <a routerLink="/login" class="link">Giriş yap (öğrenci ve öğretim elemanı)</a>
     </main>
   `,
   styles: [`

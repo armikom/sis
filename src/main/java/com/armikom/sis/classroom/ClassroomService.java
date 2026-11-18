@@ -2,10 +2,10 @@ package com.armikom.sis.classroom;
 
 import com.armikom.sis.common.ApiException;
 import com.armikom.sis.common.ErrorCode;
-import com.armikom.sis.security.CurrentTeacher;
+import com.armikom.sis.core.auth.CourseAccess;
+import com.armikom.sis.core.auth.SisPrincipal;
+import com.armikom.sis.core.person.PersonRepository;
 import com.armikom.sis.session.ClassSessionRepository;
-import com.armikom.sis.teacher.TeacherRole;
-import com.armikom.sis.teacher.TeacherUser;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,35 +19,44 @@ public class ClassroomService {
 
     private final ClassroomRepository repo;
     private final ClassSessionRepository sessionRepo;
-    private final CurrentTeacher currentTeacher;
+    private final CourseAccess access;
+    private final PersonRepository personRepo;
     private final SecureRandom random = new SecureRandom();
 
     public ClassroomService(ClassroomRepository repo, ClassSessionRepository sessionRepo,
-                            CurrentTeacher currentTeacher) {
+                            CourseAccess access, PersonRepository personRepo) {
         this.repo = repo;
         this.sessionRepo = sessionRepo;
-        this.currentTeacher = currentTeacher;
+        this.access = access;
+        this.personRepo = personRepo;
     }
 
     public record ClassroomData(String name, Double latitude, Double longitude, Integer radiusM, String bleBeaconId) {}
 
     @Transactional(readOnly = true)
     public List<Classroom> list() {
-        TeacherUser teacher = currentTeacher.get();
-        if (teacher.getRole() == TeacherRole.ADMIN) return repo.findAllByOrderByNameAsc();
-        return repo.findByOwner_IdOrderByNameAsc(teacher.getId());
+        SisPrincipal me = access.currentPerson();
+        if (me.systemAdmin()) return repo.findAllByOrderByNameAsc();
+        return repo.findByOwner_IdOrderByNameAsc(me.personId());
     }
 
+    /** A classroom I own (system admins: any). */
     @Transactional(readOnly = true)
     public Classroom get(long id) {
         Classroom c = repo.findById(id).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
-        currentTeacher.requireOwner(c.getOwnerId());
+        requireOwner(c);
         return c;
+    }
+
+    void requireOwner(Classroom c) {
+        SisPrincipal me = access.currentPerson();
+        if (!me.systemAdmin() && c.getOwnerId() != me.personId()) throw new ApiException(ErrorCode.FORBIDDEN);
     }
 
     @Transactional
     public Classroom create(ClassroomData data) {
-        Classroom c = new Classroom(currentTeacher.get(), data.name().trim());
+        access.requireStaffAnywhere();
+        Classroom c = new Classroom(personRepo.getReferenceById(access.currentPerson().personId()), data.name().trim());
         apply(c, data);
         return repo.save(c);
     }

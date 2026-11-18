@@ -9,13 +9,12 @@ import com.armikom.sis.common.ApiException;
 import com.armikom.sis.common.ErrorCode;
 import com.armikom.sis.config.AppProperties;
 import com.armikom.sis.config.MasterSecretConfig.MasterSecret;
-import com.armikom.sis.course.Course;
-import com.armikom.sis.course.CourseRepository;
+import com.armikom.sis.core.auth.CourseAccess;
+import com.armikom.sis.core.auth.SisPrincipal;
+import com.armikom.sis.core.course.Course;
+import com.armikom.sis.core.course.EnrollmentRepository;
 import com.armikom.sis.crypto.SessionKeyDerivation;
 import com.armikom.sis.live.LiveEvents;
-import com.armikom.sis.security.CurrentTeacher;
-import com.armikom.sis.teacher.TeacherRole;
-import com.armikom.sis.teacher.TeacherUser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -26,9 +25,11 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
@@ -41,28 +42,28 @@ public class SessionService {
     static final int MIN_DURATION = 1, MAX_DURATION = 240;
 
     private final ClassSessionRepository sessionRepo;
-    private final CourseRepository courseRepo;
     private final ClassroomRepository classroomRepo;
     private final AttendanceRepository attendanceRepo;
     private final SessionCodeGenerator codeGen;
-    private final CurrentTeacher currentTeacher;
+    private final CourseAccess access;
+    private final EnrollmentRepository enrollmentRepo;
     private final LiveEvents liveEvents;
     private final AppProperties props;
     private final MasterSecret masterSecret;
     private final Clock clock;
     private final ConcurrentHashMap<Long, byte[]> keyCache = new ConcurrentHashMap<>();
 
-    public SessionService(ClassSessionRepository sessionRepo, CourseRepository courseRepo,
+    public SessionService(ClassSessionRepository sessionRepo,
                           ClassroomRepository classroomRepo, AttendanceRepository attendanceRepo,
-                          SessionCodeGenerator codeGen, CurrentTeacher currentTeacher,
+                          SessionCodeGenerator codeGen, CourseAccess access, EnrollmentRepository enrollmentRepo,
                           LiveEvents liveEvents, AppProperties props,
                           MasterSecret masterSecret, Clock clock) {
         this.sessionRepo = sessionRepo;
-        this.courseRepo = courseRepo;
         this.classroomRepo = classroomRepo;
         this.attendanceRepo = attendanceRepo;
         this.codeGen = codeGen;
-        this.currentTeacher = currentTeacher;
+        this.access = access;
+        this.enrollmentRepo = enrollmentRepo;
         this.liveEvents = liveEvents;
         this.props = props;
         this.masterSecret = masterSecret;
@@ -71,19 +72,18 @@ public class SessionService {
 
     public record CreateCommand(long courseId, Long classroomId, String title,
                                 Integer durationMinutes, Integer refreshMs, Integer requiredScans,
-                                Boolean requireRoster, String geoMode, String bleMode,
-                                Boolean frameCapture) {}
+                                String geoMode, String bleMode, Boolean frameCapture) {}
 
     @Transactional(readOnly = true)
     public List<ClassSession> listAll(Long courseId, SessionStatus status) {
-        TeacherUser teacher = currentTeacher.get();
+        SisPrincipal me = access.currentPerson();
+        Set<Long> staffCourses = new HashSet<>(access.staffCourseIds());
         List<ClassSession> all = courseId != null ? sessionRepo.findByCourseId(courseId)
                 : status != null ? sessionRepo.findByStatus(status)
                 : sessionRepo.findAll();
         return all.stream()
                 .filter(s -> status == null || s.getStatus() == status)
-                .filter(s -> teacher.getRole() == TeacherRole.ADMIN
-                        || s.getCourse().getOwnerId().equals(teacher.getId()))
+                .filter(s -> me.systemAdmin() || staffCourses.contains(s.getCourse().getId()))
                 .sorted(Comparator.comparing(ClassSession::getCreatedAt).reversed())
                 .toList();
     }
@@ -91,15 +91,13 @@ public class SessionService {
     @Transactional(readOnly = true)
     public ClassSession get(long id) {
         ClassSession s = sessionRepo.findById(id).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
-        currentTeacher.requireOwner(s.getCourse().getOwnerId());
+        access.requireStaff(s.getCourse().getId());
         return s;
     }
 
     @Transactional
     public ClassSession create(CreateCommand cmd) {
-        Course course = courseRepo.findById(cmd.courseId())
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
-        currentTeacher.requireOwner(course.getOwnerId());
+        Course course = access.requireStaff(cmd.courseId());
 
         var defaults = props.checkin().defaults();
         int duration = cmd.durationMinutes() != null ? cmd.durationMinutes() : defaults.durationMinutes();
@@ -126,7 +124,7 @@ public class SessionService {
         if (cmd.classroomId() != null) {
             classroom = classroomRepo.findById(cmd.classroomId())
                     .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
-            currentTeacher.requireOwner(classroom.getOwnerId());
+            requireClassroomUsable(classroom, course);
         }
         if (geoMode == GeoMode.FLAG && (classroom == null || classroom.getLatitude() == null
                 || classroom.getLongitude() == null || classroom.getRadiusM() == null)) {
@@ -146,11 +144,19 @@ public class SessionService {
         s.setLatencyMarginMs(defaults.latencyMarginMs());
         s.setDefaultLatencyThresholdMs(defaults.defaultLatencyThresholdMs());
         s.setScreenAreaRatioThreshold(defaults.screenAreaRatioThreshold());
-        s.setRequireRoster(cmd.requireRoster() != null ? cmd.requireRoster() : defaults.requireRoster());
         s.setGeoMode(geoMode);
         s.setBleMode(bleMode);
         s.setFrameCapture(cmd.frameCapture() != null ? cmd.frameCapture() : defaults.frameCapture());
         return sessionRepo.save(s);
+    }
+
+    /** A classroom may be used by its owner, a system admin, or any staff member of a course its owner teaches. */
+    private void requireClassroomUsable(Classroom classroom, Course course) {
+        SisPrincipal me = access.currentPerson();
+        if (me.systemAdmin() || classroom.getOwnerId() == me.personId()) return;
+        boolean ownerTeachesCourse = enrollmentRepo.findLive(course.getId(), classroom.getOwnerId())
+                .map(e -> e.getRole().isStaff()).orElse(false);
+        if (!ownerTeachesCourse) throw new ApiException(ErrorCode.FORBIDDEN);
     }
 
     @Transactional

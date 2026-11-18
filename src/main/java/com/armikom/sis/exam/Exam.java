@@ -1,6 +1,6 @@
 package com.armikom.sis.exam;
 
-import com.armikom.sis.course.Course;
+import com.armikom.sis.core.course.Course;
 import jakarta.persistence.*;
 
 import java.time.Instant;
@@ -24,6 +24,14 @@ public class Exam {
     @Column(name = "exam_date")
     private LocalDate examDate;
 
+    /** Number of paper forms (A, B, ...), 1-4. */
+    @Column(nullable = false)
+    private int forms = 1;
+
+    /** Shuffle seed when the paper was drawn from the question pool. */
+    @Column
+    private Long seed;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -42,5 +50,9 @@ public class Exam {
     public void setTitle(String title) { this.title = title; }
     public LocalDate getExamDate() { return examDate; }
     public void setExamDate(LocalDate examDate) { this.examDate = examDate; }
+    public int getForms() { return forms; }
+    public void setForms(int forms) { this.forms = forms; }
+    public Long getSeed() { return seed; }
+    public void setSeed(Long seed) { this.seed = seed; }
     public Instant getCreatedAt() { return createdAt; }
 }

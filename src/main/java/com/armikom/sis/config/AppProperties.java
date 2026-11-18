@@ -12,6 +12,8 @@ public record AppProperties(
         String masterSecret,
         String publicBaseUrl,
         @Valid Admin admin,
+        @Valid Auth auth,
+        @Valid Mail mail,
         String privacyNotice,
         @Valid DeviceCookie deviceCookie,
         @Valid Frames frames,
@@ -21,6 +23,18 @@ public record AppProperties(
         @Valid Checkin checkin
 ) {
     public record Admin(String username, String password) {}
+
+    /** DB-backed sign-in sessions and mailed login links (core.auth). */
+    public record Auth(
+            @NotBlank String cookieName,
+            boolean cookieSecure,
+            @Positive int sessionDays,
+            @Positive int linkMinutes,
+            String linkHosts
+    ) {}
+
+    /** Sender address and optional Exchange Web Services endpoint; SMTP itself is spring.mail.*. */
+    public record Mail(String from, String ewsUrl) {}
 
     public record DeviceCookie(
             @NotBlank String name,
@@ -40,7 +54,8 @@ public record AppProperties(
             @Positive int perDevicePerMinute,
             @Positive int perIpPerMinute,
             @Positive int startsPerDevicePer10min,
-            @Positive int loginPerIpPerMinute
+            @Positive int loginPerIpPerMinute,
+            @Positive int authRequestPerIpPerMinute
     ) {}
 
     public record Ble(
@@ -70,8 +85,7 @@ public record AppProperties(
                 @Positive int durationMinutes,
                 String geoMode,
                 String bleMode,
-                boolean frameCapture,
-                boolean requireRoster
+                boolean frameCapture
         ) {}
     }
 }

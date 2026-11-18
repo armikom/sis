@@ -9,12 +9,13 @@ export const apiErrorInterceptor: HttpInterceptorFn = (req, next) => {
   const router = inject(Router);
   return next(req).pipe(
     catchError((err: HttpErrorResponse) => {
-      // An expired teacher session inside /t sends the user to the login page. /api/auth/* is left to
+      // An expired session inside /t or /courses sends the user to the login page. /api/auth/* is left to
       // the auth guard and the login form.
       if (err.status === 401 && req.url.startsWith('/api/') && !req.url.startsWith('/api/public/')
           && !req.url.startsWith('/api/auth/')) {
-        if (typeof window !== 'undefined' && window.location.pathname.startsWith('/t')) {
-          router.navigateByUrl('/t/login');
+        const path = typeof window !== 'undefined' ? window.location.pathname : '';
+        if (path.startsWith('/t') || path.startsWith('/courses')) {
+          router.navigateByUrl('/login');
         }
       }
       const apiError: ApiError = err.error && typeof err.error === 'object' && err.error.code

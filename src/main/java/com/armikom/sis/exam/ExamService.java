@@ -4,10 +4,10 @@ import com.armikom.sis.common.ApiException;
 import com.armikom.sis.common.ErrorCode;
 import com.armikom.sis.common.Strings;
 import com.armikom.sis.config.AppProperties;
-import com.armikom.sis.course.Course;
-import com.armikom.sis.course.CourseService;
-import com.armikom.sis.course.RosterEntry;
-import com.armikom.sis.course.RosterEntryRepository;
+import com.armikom.sis.core.auth.CourseAccess;
+import com.armikom.sis.core.course.Course;
+import com.armikom.sis.core.course.EnrollmentRepository;
+import com.armikom.sis.core.course.RosterStudent;
 import com.armikom.sis.exam.ExamDtos.*;
 import com.armikom.sis.export.CsvExportService;
 import org.springframework.stereotype.Service;
@@ -33,21 +33,21 @@ public class ExamService {
     private final ExamQuestionRepository questionRepo;
     private final ExamResultRepository resultRepo;
     private final ExamAnswerRepository answerRepo;
-    private final RosterEntryRepository rosterRepo;
-    private final CourseService courseService;
+    private final EnrollmentRepository enrollmentRepo;
+    private final CourseAccess access;
     private final ExamQueries queries;
     private final Clock clock;
     private final Pattern studentNoPattern;
 
     public ExamService(ExamRepository examRepo, ExamQuestionRepository questionRepo, ExamResultRepository resultRepo,
-                       ExamAnswerRepository answerRepo, RosterEntryRepository rosterRepo, CourseService courseService,
+                       ExamAnswerRepository answerRepo, EnrollmentRepository enrollmentRepo, CourseAccess access,
                        ExamQueries queries, Clock clock, AppProperties props) {
         this.examRepo = examRepo;
         this.questionRepo = questionRepo;
         this.resultRepo = resultRepo;
         this.answerRepo = answerRepo;
-        this.rosterRepo = rosterRepo;
-        this.courseService = courseService;
+        this.enrollmentRepo = enrollmentRepo;
+        this.access = access;
         this.queries = queries;
         this.clock = clock;
         this.studentNoPattern = Pattern.compile(props.checkin().studentNoPattern());
@@ -57,7 +57,7 @@ public class ExamService {
 
     @Transactional(readOnly = true)
     public List<ExamSummaryDto> list(long courseId) {
-        courseService.get(courseId);
+        access.requireStaff(courseId);
         List<Exam> exams = queries.examsOfCourse(courseId);
         ExamQueries.Snapshot data = queries.load(exams);
         return exams.stream().map(e -> ExamQueries.summary(e, data)).toList();
@@ -70,9 +70,12 @@ public class ExamService {
 
     @Transactional
     public ExamDto create(long courseId, ExamRequest req) {
-        Course course = courseService.get(courseId);
+        Course course = access.requireStaff(courseId);
         ValidExam valid = validate(req, Set.of());
-        Exam exam = examRepo.save(new Exam(course, valid.title(), valid.examDate(), clock.instant()));
+        Exam exam = new Exam(course, valid.title(), valid.examDate(), clock.instant());
+        if (valid.forms() != null) exam.setForms(valid.forms());
+        exam.setSeed(req.seed());
+        exam = examRepo.save(exam);
         int position = 1;
         for (QuestionSpec spec : valid.questions()) {
             ExamQuestion q = new ExamQuestion(exam);
@@ -118,6 +121,8 @@ public class ExamService {
 
         exam.setTitle(valid.title());
         exam.setExamDate(valid.examDate());
+        if (valid.forms() != null) exam.setForms(valid.forms());
+        if (req.seed() != null) exam.setSeed(req.seed());
         int position = 1;
         for (QuestionSpec spec : valid.questions()) {
             ExamQuestion q = spec.id() != null ? existing.get(spec.id()) : new ExamQuestion(exam);
@@ -150,21 +155,21 @@ public class ExamService {
         List<ExamQuestion> questions = questionRepo.findByExamId(exam.getId());
         Course c = exam.getCourse();
         return new ExamDto(exam.getId(), c.getId(), c.getCode(), c.getName(), exam.getTitle(), exam.getExamDate(),
-                ExamQueries.examTotal(questions), resultRepo.countByExam_Id(exam.getId()),
+                exam.getForms(), exam.getSeed(), ExamQueries.examTotal(questions), resultRepo.countByExam_Id(exam.getId()),
                 exam.getCreatedAt().toString(), questions.stream().map(ExamService::toDto).toList());
     }
 
     static QuestionDto toDto(ExamQuestion q) {
         return new QuestionDto(q.getId(), q.getPosition(), q.getType(), q.getText(), q.getTopic(),
-                ExamMath.normalize(q.getMaxPoints()), q.getChoiceCount(), q.getCorrectChoice());
+                ExamMath.normalize(q.getMaxPoints()), q.getChoiceCount(), q.getCorrectChoice(), q.getPoolQuestionId());
     }
 
     // ---- definition validation -----------------------------------------------------------------
 
-    private record ValidExam(String title, LocalDate examDate, List<QuestionSpec> questions) {}
+    private record ValidExam(String title, LocalDate examDate, List<QuestionSpec> questions, Integer forms) {}
 
     private record QuestionSpec(Long id, QuestionType type, String text, String topic, BigDecimal maxPoints,
-                                Integer choiceCount, String correctChoice) {
+                                Integer choiceCount, String correctChoice, Long poolQuestionId) {
         void applyTo(ExamQuestion q, int position) {
             q.setPosition(position);
             q.setType(type);
@@ -173,6 +178,7 @@ public class ExamService {
             q.setMaxPoints(maxPoints);
             q.setChoiceCount(choiceCount);
             q.setCorrectChoice(correctChoice);
+            q.setPoolQuestionId(poolQuestionId);
         }
     }
 
@@ -182,6 +188,7 @@ public class ExamService {
         String title = req.title() == null ? "" : req.title().trim();
         if (title.isEmpty()) errors.put("title", "Başlık zorunlu");
         else if (title.length() > 200) errors.put("title", "En fazla 200 karakter");
+        if (req.forms() != null && (req.forms() < 1 || req.forms() > 4)) errors.put("forms", "1 ile 4 arasında olmalı");
 
         List<QuestionRequest> items = req.questions() == null ? List.of() : req.questions();
         if (items.size() > MAX_QUESTIONS) {
@@ -221,10 +228,10 @@ public class ExamService {
                     if (correct == null) errors.put(k + "correctChoice", "Doğru cevap A-" + ExamMath.letter(choiceCount) + " aralığında olmalı");
                 }
             }
-            specs.add(new QuestionSpec(q.id(), q.type(), text, topic, max, choiceCount, correct));
+            specs.add(new QuestionSpec(q.id(), q.type(), text, topic, max, choiceCount, correct, q.poolQuestionId()));
         }
         if (!errors.isEmpty()) throw new ApiException(ErrorCode.VALIDATION_ERROR, errors);
-        return new ValidExam(title, req.examDate(), specs);
+        return new ValidExam(title, req.examDate(), specs, req.forms());
     }
 
     /** Uppercased single letter within A..(choiceCount-th letter), or null when invalid. */
@@ -253,17 +260,18 @@ public class ExamService {
             throw new ApiException(ErrorCode.VALIDATION_ERROR, Map.of("studentNo", "Geçersiz format"));
         }
         if (req == null) throw new ApiException(ErrorCode.VALIDATION_ERROR);
+        // Results are roster-only: the number must have a live STUDENT enrollment in the course.
+        RosterStudent student = enrollmentRepo.rosterStudent(exam.getCourse().getId(), studentNo)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_IN_ROSTER));
+        String form = validForm(req.form(), exam.getForms());
         List<ExamQuestion> questions = questionRepo.findByExamId(examId);
         Map<Long, AnswerValue> wanted = validateAnswers(req.answers(), questions);
 
         Instant now = clock.instant();
         ExamResult result = resultRepo.findByExam_IdAndStudentNo(examId, studentNo)
-                .orElseGet(() -> resultRepo.save(new ExamResult(exam, studentNo, now)));
-        String rosterName = rosterRepo.findByCourseIdAndStudentNo(exam.getCourse().getId(), studentNo)
-                .map(RosterEntry::getFullName).orElse(null);
-        String requestName = Strings.clip(req.fullName(), 200);
-        if (rosterName != null) result.setFullName(rosterName);
-        else if (requestName != null) result.setFullName(requestName);
+                .orElseGet(() -> resultRepo.save(new ExamResult(exam, student.personId(), studentNo, now)));
+        result.setFullName(student.fullName() != null ? student.fullName() : "");
+        result.setForm(form);
         result.setNote(Strings.clip(req.note(), 500));
         result.setUpdatedAt(now);
 
@@ -296,6 +304,16 @@ public class ExamService {
         queries.requireExam(examId);
         resultRepo.findByExam_IdAndStudentNo(examId, studentNo == null ? "" : studentNo.trim())
                 .ifPresent(resultRepo::delete);
+    }
+
+    /** Upper-case form letter within A..(forms-th letter), null for none; 400 otherwise. */
+    private static String validForm(String raw, int forms) {
+        if (raw == null || raw.isBlank()) return null;
+        String f = raw.trim().toUpperCase(Locale.ROOT);
+        if (f.length() != 1 || f.charAt(0) < 'A' || f.charAt(0) >= 'A' + forms) {
+            throw new ApiException(ErrorCode.VALIDATION_ERROR, Map.of("form", "Form A-" + ExamMath.letter(forms) + " aralığında olmalı"));
+        }
+        return f;
     }
 
     private record AnswerValue(String answer, BigDecimal points) {}
@@ -368,9 +386,27 @@ public class ExamService {
                 .map(a -> new AnswerDto(a.getQuestion().getId(), a.getAnswerText(), ExamMath.normalize(a.getPoints())))
                 .toList();
         int graded = ExamQueries.gradedCount(answers);
-        return new ExamResultDto(r.getId(), r.getStudentNo(), r.getFullName(), r.getNote(),
+        return new ExamResultDto(r.getId(), r.getPersonId(), r.getStudentNo(), r.getFullName(), r.getForm(), r.getNote(),
                 ExamQueries.resultTotal(answers), graded, graded == questions.size(),
                 r.getUpdatedAt().toString(), dtos);
+    }
+
+    // ---- student self-service ------------------------------------------------------------------
+
+    /** The signed-in person's totals for every exam of the course that has a result for them. */
+    @Transactional(readOnly = true)
+    public List<MyResultDto> myResults(long courseId) {
+        access.requireMember(courseId);
+        long me = access.currentPerson().personId();
+        List<Exam> exams = queries.examsOfCourse(courseId);
+        ExamQueries.Snapshot data = queries.load(exams);
+        List<MyResultDto> out = new ArrayList<>();
+        for (Exam exam : exams) {
+            data.results(exam).stream().filter(r -> r.getPersonId() == me).findFirst().ifPresent(r ->
+                    out.add(new MyResultDto(exam.getId(), exam.getTitle(), exam.getExamDate(),
+                            ExamQueries.resultTotal(data.answers(r)), ExamQueries.examTotal(data.questions(exam)))));
+        }
+        return out;
     }
 
     // ---- CSV (11 §3.5) -------------------------------------------------------------------------

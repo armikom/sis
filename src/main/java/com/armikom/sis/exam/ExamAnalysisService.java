@@ -2,9 +2,9 @@ package com.armikom.sis.exam;
 
 import com.armikom.sis.common.ApiException;
 import com.armikom.sis.common.ErrorCode;
-import com.armikom.sis.course.CourseService;
-import com.armikom.sis.course.RosterEntry;
-import com.armikom.sis.course.RosterEntryRepository;
+import com.armikom.sis.core.auth.CourseAccess;
+import com.armikom.sis.core.course.EnrollmentRepository;
+import com.armikom.sis.core.course.RosterStudent;
 import com.armikom.sis.exam.ExamDtos.*;
 import com.armikom.sis.exam.ExamMath.Tally;
 import org.springframework.stereotype.Service;
@@ -26,13 +26,13 @@ public class ExamAnalysisService {
     }
 
     private final ExamQueries queries;
-    private final CourseService courseService;
-    private final RosterEntryRepository rosterRepo;
+    private final CourseAccess access;
+    private final EnrollmentRepository enrollmentRepo;
 
-    public ExamAnalysisService(ExamQueries queries, CourseService courseService, RosterEntryRepository rosterRepo) {
+    public ExamAnalysisService(ExamQueries queries, CourseAccess access, EnrollmentRepository enrollmentRepo) {
         this.queries = queries;
-        this.courseService = courseService;
-        this.rosterRepo = rosterRepo;
+        this.access = access;
+        this.enrollmentRepo = enrollmentRepo;
     }
 
     // ---- exam ----------------------------------------------------------------------------------
@@ -129,7 +129,7 @@ public class ExamAnalysisService {
 
     @Transactional(readOnly = true)
     public CourseLearningDto course(long courseId) {
-        courseService.get(courseId);
+        access.requireStaff(courseId);
         List<Exam> exams = queries.examsOfCourse(courseId);
         ExamQueries.Snapshot data = queries.load(exams);
         Map<String, String> names = names(courseId, data);
@@ -203,8 +203,8 @@ public class ExamAnalysisService {
         }
         Map<String, String> names = new TreeMap<>();
         latest.forEach((no, r) -> names.put(no, r.getFullName()));
-        for (RosterEntry e : rosterRepo.findByCourseIdOrderByStudentNoAsc(courseId)) {
-            names.put(e.getStudentNo(), e.getFullName());
+        for (RosterStudent e : enrollmentRepo.roster(courseId)) {
+            if (e.studentNo() != null) names.put(e.studentNo(), e.fullName());
         }
         return names;
     }
@@ -213,11 +213,11 @@ public class ExamAnalysisService {
 
     @Transactional(readOnly = true)
     public StudentLearningDto student(long courseId, String rawStudentNo) {
-        courseService.get(courseId);
+        access.requireStaff(courseId);
         String studentNo = rawStudentNo == null ? "" : rawStudentNo.trim();
         List<Exam> exams = queries.examsOfCourse(courseId);
         ExamQueries.Snapshot data = queries.load(exams);
-        Optional<RosterEntry> roster = rosterRepo.findByCourseIdAndStudentNo(courseId, studentNo);
+        Optional<RosterStudent> roster = enrollmentRepo.rosterStudent(courseId, studentNo);
 
         List<StudentExamDto> examDtos = new ArrayList<>();
         Map<String, Tally> perTopic = new HashMap<>();
@@ -258,7 +258,7 @@ public class ExamAnalysisService {
                         e.getValue().rate()))
                 .sorted(byRate(StudentTopicDto::successRate, StudentTopicDto::topic))
                 .toList();
-        String fullName = roster.map(RosterEntry::getFullName).orElse(latest != null ? latest.getFullName() : "");
+        String fullName = roster.map(RosterStudent::fullName).orElse(latest != null ? latest.getFullName() : "");
         return new StudentLearningDto(courseId, studentNo, fullName, examDtos, topics, missed);
     }
 }

@@ -19,6 +19,7 @@ public enum ErrorCode {
     RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "Çok fazla deneme. Biraz bekleyin."),
     FRAME_INVALID(HttpStatus.BAD_REQUEST, "Kare geçersiz."),
     CONFLICT(HttpStatus.CONFLICT, "Çakışma."),
+    LINK_INVALID(HttpStatus.BAD_REQUEST, "Bu bağlantı artık geçerli değil. Yeni bir bağlantı isteyin."),
     INTERNAL(HttpStatus.INTERNAL_SERVER_ERROR, "Beklenmeyen bir hata oluştu.");
 
     private final HttpStatus httpStatus;

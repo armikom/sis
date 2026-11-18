@@ -6,7 +6,7 @@
   },
   "newProjectRoot": "projects",
   "projects": {
-    "yoklama-web": {
+    "sis-web": {
       "projectType": "application",
       "schematics": {
         "@schematics/angular:component": {
@@ -24,7 +24,7 @@
             "tsConfig": "tsconfig.app.json",
             "inlineStyleLanguage": "scss",
             "allowedCommonJsDependencies": ["qrcode"],
-            "outputPath": "dist/yoklama-web",
+            "outputPath": "dist/sis-web",
             "baseHref": "/",
             "assets": [
               {
@@ -77,10 +77,10 @@
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "yoklama-web:build:production"
+              "buildTarget": "sis-web:build:production"
             },
             "development": {
-              "buildTarget": "yoklama-web:build:development"
+              "buildTarget": "sis-web:build:development"
             }
           },
           "defaultConfiguration": "development",

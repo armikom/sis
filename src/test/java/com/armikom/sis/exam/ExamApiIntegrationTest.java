@@ -1,10 +1,9 @@
 package com.armikom.sis.exam;
 
 import com.armikom.sis.security.RateLimitFilter;
+import com.armikom.sis.support.PostgresTestcontainer;
 import com.armikom.sis.support.TestClockConfig;
-import com.armikom.sis.teacher.TeacherRole;
-import com.armikom.sis.teacher.TeacherUser;
-import com.armikom.sis.teacher.TeacherUserRepository;
+import com.armikom.sis.support.TestPeople;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,7 +11,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -27,7 +25,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -35,7 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@Import(TestClockConfig.class)
+@Import({TestClockConfig.class, PostgresTestcontainer.class, TestPeople.Config.class})
 class ExamApiIntegrationTest {
 
     static final AtomicInteger COUNTER = new AtomicInteger(50_000);
@@ -43,24 +40,25 @@ class ExamApiIntegrationTest {
 
     @Autowired MockMvc mvc;
     @Autowired JsonMapper json;
-    @Autowired TeacherUserRepository teachers;
-    @Autowired PasswordEncoder encoder;
+    @Autowired TestPeople people;
     @Autowired RateLimitFilter rateLimit;
+
+    static TestPeople PEOPLE;
+    /** Exam id → course id, so result entry can put the student on the roster first (results are roster-only). */
+    final Map<Long, Long> courseOfExam = new HashMap<>();
 
     @BeforeEach
     void setUp() {
-        for (String name : List.of("t1", "t2")) {
-            if (!teachers.existsByUsername(name)) {
-                teachers.save(new TeacherUser(name, encoder.encode("parola123"), "Öğretmen " + name, TeacherRole.TEACHER));
-            }
-        }
+        PEOPLE = people;
+        people.staff("t1");
+        people.staff("t2");
         rateLimit.clear();
     }
 
     // ---- helpers ------------------------------------------------------------------------------
 
-    static RequestPostProcessor t1() { return user("t1").roles("TEACHER"); }
-    static RequestPostProcessor t2() { return user("t2").roles("TEACHER"); }
+    static RequestPostProcessor t1() { return PEOPLE.as("t1"); }
+    static RequestPostProcessor t2() { return PEOPLE.as("t2"); }
 
     static String studentNo() { return "3303" + COUNTER.incrementAndGet(); }
 
@@ -127,7 +125,9 @@ class ExamApiIntegrationTest {
     }
 
     JsonNode createExam(long courseId, Object req) throws Exception {
-        return body(postExam(courseId, req).andExpect(status().isCreated()));
+        JsonNode e = body(postExam(courseId, req).andExpect(status().isCreated()));
+        courseOfExam.put(e.get("id").asLong(), courseId);
+        return e;
     }
 
     ResultActions putExam(long examId, Object req) throws Exception {
@@ -135,7 +135,18 @@ class ExamApiIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON).content(toJson(req)));
     }
 
+    /** Puts the number on the exam's roster (named after the request's fullName) and saves the result. */
+    @SuppressWarnings("unchecked")
     ResultActions putResult(long examId, String no, Object req) throws Exception {
+        Long courseId = courseOfExam.get(examId);
+        if (courseId != null && no.matches("^[0-9]{5,12}$")) {
+            Object name = req instanceof Map<?, ?> m ? ((Map<String, Object>) m).get("fullName") : null;
+            people.enroll(courseId, no, name != null ? name.toString() : "Öğrenci " + no);
+        }
+        return putResultRaw(examId, no, req);
+    }
+
+    ResultActions putResultRaw(long examId, String no, Object req) throws Exception {
         return mvc.perform(put("/api/exams/" + examId + "/results/" + no).with(t1()).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(toJson(req)));
     }
@@ -358,10 +369,11 @@ class ExamApiIntegrationTest {
         assertEquals(0, a2.get(c1).get("points").asDouble(), EPS);
         assertEquals(5, r2.get("totalPoints").asDouble(), EPS);
 
-        // Not on the roster: request name, then empty.
+        // Not on the roster: results are roster-only in SIS.
         String outsider = studentNo();
-        assertEquals("Dış Öğrenci", saveResult(examId, outsider, result("Dış Öğrenci", List.of())).get("fullName").asString());
-        assertEquals("", saveResult(examId, studentNo(), result(null, List.of())).get("fullName").asString());
+        putResultRaw(examId, outsider, result("Dış Öğrenci", List.of()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("NOT_IN_ROSTER"));
 
         // Complete when every question is graded.
         String full = studentNo();
@@ -371,15 +383,15 @@ class ExamApiIntegrationTest {
         assertFalse(complete.get("complete").asBoolean());
 
         JsonNode list = getJson("/api/exams/" + examId + "/results");
-        assertEquals(4, list.size());
+        assertEquals(2, list.size());
         List<String> nos = new ArrayList<>();
         list.forEach(n -> nos.add(n.get("studentNo").asString()));
         assertEquals(nos.stream().sorted().toList(), nos);
-        assertEquals(4, getJson("/api/exams/" + examId).get("resultCount").asInt());
+        assertEquals(2, getJson("/api/exams/" + examId).get("resultCount").asInt());
 
-        mvc.perform(delete("/api/exams/" + examId + "/results/" + outsider).with(t1()).with(csrf()))
+        mvc.perform(delete("/api/exams/" + examId + "/results/" + full).with(t1()).with(csrf()))
                 .andExpect(status().isNoContent());
-        assertEquals(3, getJson("/api/exams/" + examId + "/results").size());
+        assertEquals(1, getJson("/api/exams/" + examId + "/results").size());
     }
 
     @Test
