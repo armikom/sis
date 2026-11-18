@@ -82,6 +82,14 @@ from the Form A key in the script):
 psql "$DB" -v ON_ERROR_STOP=1 -f migration/link-midterm1.sql
 ```
 
+Then start the SIS application once on the migrated database (it derives the `topic` rows from the numbered
+`## N. Title` headings of the chapter texts) and link the 97 pool questions to their topics. Midterm 1's exam
+questions inherit these topics through their pool link:
+
+```bash
+psql "$DB" -v ON_ERROR_STOP=1 -f migration/link-topics.sql
+```
+
 `verify.sql` must end with `checks_failed = 0` and `all checks passed`. `migrate.sql` is atomic: if it errors,
 nothing was written; fix the cause and run it again. If it already committed and you must redo it:
 `docker compose down && docker volume rm sis_pg_data && docker compose up -d db app`, then repeat from step 3

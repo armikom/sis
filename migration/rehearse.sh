@@ -11,7 +11,7 @@ if [ $# -ne 2 ]; then echo "usage: $0 <yoklama.sql> <questionpool.sql>" >&2; exi
 HERE=$(cd "$(dirname "$0")" && pwd)
 YOKLAMA_DUMP=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 QP_DUMP=$(cd "$(dirname "$2")" && pwd)/$(basename "$2")
-V1="$HERE/../src/main/resources/db/migration/V1__init.sql"
+MIGRATIONS="$HERE/../src/main/resources/db/migration"
 read -r -a PSQL_CMD <<< "${PSQL:-psql}"
 NAME=sis-rehearsal-$$
 PORT=${REHEARSE_PORT:-$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1])')}
@@ -30,8 +30,10 @@ for _ in $(seq 1 60); do
 done
 "${PSQL_CMD[@]}" "$URL" -Atqc 'select 1' >/dev/null
 
-echo ">> applying V1__init.sql (what Flyway does on first app start)"
-"${PSQL_CMD[@]}" "$URL" -v ON_ERROR_STOP=1 -q -f "$V1"
+echo ">> applying the Flyway migrations V*.sql in order (what the app does on first start)"
+for f in $(ls "$MIGRATIONS"/V*.sql | sort -V); do
+  "${PSQL_CMD[@]}" "$URL" -v ON_ERROR_STOP=1 -q -f "$f"
+done
 
 if [ "${BOOTSTRAP_ADMIN:-1}" = "1" ]; then
   echo ">> simulating the bootstrap admin person created by the app on first start"

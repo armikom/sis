@@ -50,7 +50,7 @@ const EMPTY_VIEW: ResultView = { reviewTopics: [], questions: [], hasTopics: fal
             <div class="card score">
               <span class="text-sm text-secondary">{{ m.median }}</span>
               <span class="score-value">{{ fmt(s.median) }}</span>
-              <span class="text-sm text-secondary">/ {{ fmt(s.maxPoints || r.maxPoints) }}</span>
+              <span class="text-sm text-secondary">/ {{ fmt(r.maxPoints) }}</span>
             </div>
           }
         </div>
