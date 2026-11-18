@@ -5,6 +5,7 @@ import { errorMessage } from '../shared/errors';
 import { ExamExportDialogComponent } from './exam-export-dialog.component';
 import { TopicChipsComponent } from '../shared/topics/topic-chips.component';
 import { apiTopics } from '../shared/topics/topic';
+import { textSegments } from '../shared/text-segments';
 import type { ExamAnalysisDto, ExamDto, ExamResultDto, RosterEntryDto } from '../core/api.models';
 import {
   barWidth, choiceBars, filterRows, formatExamDate, formatNumber, formatPercent, mergeRows, QUESTION_TYPE_LABELS,
@@ -115,7 +116,28 @@ import {
                     @if (q.correctChoice) { <span class="badge badge-success">Anahtar: {{ q.correctChoice }}</span> }
                     @if (q.poolQuestionId) { <span class="text-sm text-secondary">Havuz #{{ q.poolQuestionId }}</span> }
                   </div>
-                  @if (q.text) { <div class="q-text">{{ q.text }}</div> }
+                  @if (q.hasContent) {
+                    <details class="q-content">
+                      <summary>{{ q.summary || 'Soru içeriği' }}</summary>
+                      @for (seg of segments(q.text); track $index) {
+                        @if (seg.code) { <pre class="q-code"><code>{{ seg.text }}</code></pre> } @else { <div class="q-text">{{ seg.text }}</div> }
+                      }
+                      @if (q.options?.length) {
+                        <ul class="q-options">
+                          @for (o of q.options; track o.letter) {
+                            <li [class.key]="o.letter === q.correctChoice">
+                              <span class="q-letter">{{ o.letter }}</span>
+                              <div class="q-opt-body">
+                                <div class="q-text">{{ o.text || '—' }} @if (o.letter === q.correctChoice) { <span class="badge badge-success">doğru</span> }</div>
+                                @if (o.rationale) { <div class="q-why">{{ o.rationale }}</div> }
+                              </div>
+                            </li>
+                          }
+                        </ul>
+                      }
+                      @if (q.explanation) { <div class="q-expl"><strong>Cevap açıklaması:</strong> <div class="q-text">{{ q.explanation }}</div></div> }
+                    </details>
+                  }
                   <app-topic-chips [topics]="q.topicList" />
                 </li>
               }
@@ -251,7 +273,16 @@ import {
     .q-list { list-style: none; margin: 0; padding: 0; }
     .q-item { border: 1px solid var(--c-border); border-radius: var(--radius-md); background: var(--c-surface); padding: 10px 12px; margin-bottom: 8px; }
     .q-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
-    .q-text { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; max-height: 12em; overflow: auto; }
+    .q-text { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; }
+    .q-content summary { cursor: pointer; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--c-text-secondary); }
+    .q-code { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: 0.85rem; background: var(--c-bg); border: 1px solid var(--c-border); border-radius: var(--radius-md); padding: 8px; margin: 6px 0; }
+    .q-options { list-style: none; padding: 0; margin: 8px 0; }
+    .q-options li { display: flex; gap: 8px; padding: 6px 8px; border: 1px solid var(--c-border); border-radius: var(--radius-md); margin-bottom: 4px; }
+    .q-options li.key { border-color: var(--c-success); background: var(--c-success-light); }
+    .q-letter { font-weight: 700; min-width: 1.2em; }
+    .q-opt-body { flex: 1; min-width: 0; }
+    .q-why { color: var(--c-text-secondary); font-size: 0.85rem; white-space: pre-wrap; margin-top: 2px; }
+    .q-expl { border-left: 3px solid var(--c-primary); background: var(--c-primary-light); padding: 6px 10px; border-radius: 4px; margin-top: 6px; }
     .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--c-border); margin-bottom: var(--space-md); }
     .tab { background: none; border: none; border-bottom: 3px solid transparent; padding: 8px 16px; cursor: pointer; color: var(--c-text-secondary); font-weight: 500; }
     .tab.active { color: var(--c-primary); border-bottom-color: var(--c-primary); }
@@ -300,7 +331,13 @@ export class ExamDetailComponent implements OnInit {
   readonly analysisError = signal('');
   readonly tab = signal<'results' | 'analysis' | 'questions'>('results');
   readonly publishing = signal(false);
-  readonly questionRows = computed(() => (this.exam()?.questions ?? []).map(q => ({ ...q, topicList: apiTopics(q.topics) })));
+  readonly questionRows = computed(() => (this.exam()?.questions ?? []).map(q => ({
+    ...q,
+    topicList: apiTopics(q.topics),
+    summary: (q.text ?? '').trim().split('\n')[0].slice(0, 160),
+    hasContent: !!q.text?.trim() || !!q.explanation?.trim() || (q.options ?? []).some(o => o.text?.trim() || o.rationale?.trim()),
+  })));
+  readonly segments = textSegments;
   readonly anyTopics = computed(() => this.questionRows().some(q => q.topicList.length > 0));
   readonly showExport = signal(false);
   readonly query = signal('');

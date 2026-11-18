@@ -9,7 +9,7 @@ import { apiTopics, poolTopics, Topic } from '../shared/topics/topic';
 import type { ExamDto, QuestionType } from '../core/api.models';
 import {
   LETTERS, MAX_QUESTIONS, TYPE_LABELS, QuestionDraft, applyKey, bulkRows, buildRequest, destructiveChanges, fromDto,
-  inheritedTopics, keyString, moveRow, newRow, topicsOf, totalPoints, validate, validChoiceCount,
+  hasContent, inheritedTopics, keyString, MAX_EXPLANATION, MAX_OPTION_TEXT, MAX_RATIONALE, MAX_TEXT, optionRows, setOption, moveRow, newRow, topicsOf, totalPoints, validate, validChoiceCount,
 } from './exam-edit.logic';
 
 @Component({
@@ -145,7 +145,9 @@ import {
                     } @else { <span class="text-secondary">—</span> }
                   </td>
                   <td class="actions">
-                    <button class="btn-icon" type="button" (click)="toggleText(r.key)" [attr.aria-expanded]="expanded().has(r.key)" [attr.aria-label]="'Soru ' + (i + 1) + ' metnini ' + (expanded().has(r.key) ? 'gizle' : 'göster')" [title]="'Soru metni'">{{ r.text.trim() ? '✎' : '¶' }}</button>
+                    <button class="btn-icon content-btn" type="button" [class.has-content]="contentOf(r)" (click)="toggleText(r.key)" [attr.aria-expanded]="expanded().has(r.key)"
+                      [attr.aria-label]="'Soru ' + (i + 1) + ' içeriğini ' + (expanded().has(r.key) ? 'gizle' : 'göster') + (contentOf(r) ? ' (içerik var)' : '')"
+                      [title]="contentOf(r) ? 'Soru içeriği (kayıtlı)' : 'Soru içeriği'">{{ contentOf(r) ? '✎' : '¶' }}</button>
                     <button class="btn-icon" type="button" (click)="move(i, -1)" [disabled]="i === 0" [attr.aria-label]="'Soru ' + (i + 1) + ' yukarı taşı'">↑</button>
                     <button class="btn-icon" type="button" (click)="move(i, 1)" [disabled]="i === rows().length - 1" [attr.aria-label]="'Soru ' + (i + 1) + ' aşağı taşı'">↓</button>
                     <button class="btn-icon text-danger" type="button" (click)="remove(r.key)" [attr.aria-label]="'Soru ' + (i + 1) + ' sil'">✕</button>
@@ -168,7 +170,30 @@ import {
                   <tr class="text-row">
                     <td></td>
                     <td [attr.colspan]="hasTopics() ? 7 : 6">
-                      <textarea class="form-input" rows="2" maxlength="2000" [attr.aria-label]="'Soru ' + (i + 1) + ' metni'" placeholder="Soru metni (isteğe bağlı)" [value]="r.text" (input)="patch(r.key, { text: $any($event.target).value })"></textarea>
+                      <div class="content-editor">
+                        <h3 class="content-title">Soru içeriği</h3>
+                        <label class="field">Soru metni
+                          <textarea class="form-input mono" rows="5" [attr.maxlength]="maxText" spellcheck="false" [attr.aria-label]="'Soru ' + (i + 1) + ' metni'"
+                            placeholder="Soru metni (isteğe bağlı; kod blokları olduğu gibi saklanır)" [value]="r.text" (input)="patch(r.key, { text: $any($event.target).value })"></textarea>
+                        </label>
+                        @if (r.type === 'CHOICE') {
+                          @for (o of optionsOf(r); track o.letter) {
+                            <div class="opt" [class.key]="r.correctChoice === o.letter">
+                              <div class="opt-letter">{{ o.letter }}@if (r.correctChoice === o.letter) { <span class="badge badge-success">doğru</span> }</div>
+                              <div class="opt-fields">
+                                <textarea class="form-input mono" rows="1" [attr.maxlength]="maxOption" [attr.aria-label]="'Soru ' + (i + 1) + ' ' + o.letter + ' seçeneği'"
+                                  [placeholder]="o.letter + ' seçeneğinin metni'" [value]="o.text" (input)="setOptionField(r, o.letter, 'text', $any($event.target).value)"></textarea>
+                                <textarea class="form-input" rows="1" [attr.maxlength]="maxRationale" [attr.aria-label]="'Soru ' + (i + 1) + ' ' + o.letter + ' açıklaması'"
+                                  placeholder="Açıklama (neden doğru/yanlış)" [value]="o.rationale" (input)="setOptionField(r, o.letter, 'rationale', $any($event.target).value)"></textarea>
+                              </div>
+                            </div>
+                          }
+                        }
+                        <label class="field">Cevap açıklaması
+                          <textarea class="form-input" rows="3" [attr.maxlength]="maxExplanation" [attr.aria-label]="'Soru ' + (i + 1) + ' cevap açıklaması'"
+                            placeholder="Doğru cevabın genel açıklaması (isteğe bağlı)" [value]="r.explanation" (input)="patch(r.key, { explanation: $any($event.target).value })"></textarea>
+                        </label>
+                      </div>
                     </td>
                   </tr>
                 }
@@ -201,6 +226,15 @@ import {
     .q-table .num { width: 76px; }
     .q-table .actions { white-space: nowrap; text-align: right; }
     .text-row textarea { width: 100%; }
+    .content-btn.has-content { color: var(--c-primary); font-weight: 700; }
+    .content-editor { display: flex; flex-direction: column; gap: 8px; }
+    .content-title { margin: 0; font-size: 0.95rem; }
+    .field { display: flex; flex-direction: column; gap: 4px; font-size: 0.875rem; }
+    .mono { font-family: var(--font-mono); font-size: 0.85rem; white-space: pre-wrap; tab-size: 4; }
+    .opt { display: flex; gap: 8px; align-items: flex-start; padding: 6px; border: 1px solid var(--c-border); border-radius: var(--radius-md); }
+    .opt.key { border-color: var(--c-success); background: var(--c-success-light); }
+    .opt-letter { font-weight: 700; min-width: 2.2em; display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+    .opt-fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
     .topics-btn { white-space: nowrap; }
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   `],
@@ -313,7 +347,21 @@ export class ExamEditComponent implements OnInit {
     }));
   }
 
+  readonly maxText = MAX_TEXT;
+  readonly maxOption = MAX_OPTION_TEXT;
+  readonly maxRationale = MAX_RATIONALE;
+  readonly maxExplanation = MAX_EXPLANATION;
+
+  contentOf(r: QuestionDraft) { return hasContent(r); }
+  optionsOf(r: QuestionDraft) { return optionRows(r); }
+
+  setOptionField(r: QuestionDraft, letter: string, field: 'text' | 'rationale', value: string) {
+    this.rows.update(rs => rs.map(x => (x.key === r.key ? { ...x, options: setOption(x.options, letter, { [field]: value }), contentEdited: true } : x)));
+  }
+
+  /** Opening the content editor marks the row so its options/explanation are sent on save. */
   toggleText(key: number) {
+    if (!this.expanded().has(key)) this.patch(key, { contentEdited: true });
     this.expanded.update(s => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
   }
 

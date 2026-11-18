@@ -1,4 +1,6 @@
-import type { ExamRequest, QuestionDto, QuestionRequest, QuestionType, TopicDto } from '../core/api.models';
+import type { ExamOptionDto, ExamRequest, QuestionDto, QuestionRequest, QuestionType, TopicDto } from '../core/api.models';
+
+export interface OptionDraft { letter: string; text: string; rationale: string }
 
 /** Editable question row (docs/11-EXAMS.md §3.3). `key` is a stable client-side track id. */
 export interface QuestionDraft {
@@ -14,12 +16,24 @@ export interface QuestionDraft {
   topicIds: number[];
   /** Effective topics as last loaded (explicit + the linked pool question's); read-only. */
   effectiveTopics: TopicDto[];
+  /** Option texts/rationales by letter (letters beyond choiceCount are kept while editing but not sent). */
+  options: OptionDraft[];
+  explanation: string;
+  /**
+   * Send `options` / `explanation`: the content editor was opened, or the question already had content. Otherwise
+   * both are left out of the request and the server keeps what it has.
+   */
+  contentEdited: boolean;
 }
 
 export interface BulkOptions { count: number; type: QuestionType; choiceCount: number; points: number; topic: string; }
 
 export const MAX_QUESTIONS = 200;
 export const MAX_POINTS = 1000;
+export const MAX_TEXT = 20000;
+export const MAX_OPTION_TEXT = 2000;
+export const MAX_RATIONALE = 4000;
+export const MAX_EXPLANATION = 20000;
 export const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
 export const TYPE_LABELS: Record<QuestionType, string> = { CHOICE: 'Seçenekli', OPEN: 'Açık uçlu', FREE: 'Serbest' };
 
@@ -29,16 +43,46 @@ export function newKey(): number { return nextKey++; }
 export function newRow(partial: Partial<QuestionDraft> = {}): QuestionDraft {
   return {
     key: newKey(), id: null, type: 'CHOICE', topic: '', text: '', maxPoints: 4, choiceCount: 4, correctChoice: null,
-    topicIds: [], effectiveTopics: [], ...partial,
+    topicIds: [], effectiveTopics: [], options: [], explanation: '', contentEdited: false, ...partial,
   };
 }
 
 export function fromDto(q: QuestionDto): QuestionDraft {
+  const options: OptionDraft[] = (Array.isArray(q.options) ? q.options : [])
+    .map(o => ({ letter: (o.letter ?? '').toUpperCase(), text: o.text ?? '', rationale: o.rationale ?? '' }))
+    .filter(o => o.letter);
+  const explanation = q.explanation ?? '';
   return {
     key: newKey(), id: q.id, type: q.type, topic: q.topic ?? '', text: q.text ?? '', maxPoints: q.maxPoints,
     choiceCount: q.choiceCount ?? 4, correctChoice: q.type === 'CHOICE' ? q.correctChoice : null,
     topicIds: Array.isArray(q.topicIds) ? [...q.topicIds] : [], effectiveTopics: Array.isArray(q.topics) ? q.topics : [],
+    options, explanation, contentEdited: explanation.trim() !== '' || options.some(o => o.text.trim() || o.rationale.trim()),
   };
+}
+
+/** The option rows shown for a CHOICE question: A..choiceCount, empty where nothing is recorded. */
+export function optionRows(r: Pick<QuestionDraft, 'choiceCount' | 'options'>): OptionDraft[] {
+  return LETTERS.slice(0, validChoiceCount(r.choiceCount)).map(l => r.options.find(o => o.letter === l) ?? { letter: l, text: '', rationale: '' });
+}
+
+/** A copy of `options` with one letter's fields changed (added when missing), ordered by letter. */
+export function setOption(options: OptionDraft[], letter: string, p: Partial<Omit<OptionDraft, 'letter'>>): OptionDraft[] {
+  const cur = options.find(o => o.letter === letter) ?? { letter, text: '', rationale: '' };
+  return [...options.filter(o => o.letter !== letter), { ...cur, ...p }].sort((a, b) => a.letter.localeCompare(b.letter));
+}
+
+/** Whether a question has recorded content beyond the one-line row (text, option texts/rationales, explanation). */
+export function hasContent(r: Pick<QuestionDraft, 'text' | 'options' | 'explanation' | 'choiceCount' | 'type'>): boolean {
+  if (r.text.trim() || r.explanation.trim()) return true;
+  return r.type === 'CHOICE' && optionRows(r).some(o => o.text.trim() || o.rationale.trim());
+}
+
+/** The options sent for a row: CHOICE only, letters within choiceCount, rows with some content. */
+export function requestOptions(r: QuestionDraft): ExamOptionDto[] {
+  if (r.type !== 'CHOICE') return [];
+  return optionRows(r)
+    .filter(o => o.text.trim() || o.rationale.trim())
+    .map(o => ({ letter: o.letter, text: o.text.trim() ? o.text : null, rationale: o.rationale.trim() ? o.rationale : null }));
 }
 
 export function validChoiceCount(n: number): number {
@@ -119,7 +163,14 @@ export function validate(title: string, rows: QuestionDraft[]): string[] {
       if (!Number.isInteger(r.choiceCount) || r.choiceCount < 2 || r.choiceCount > 6) errs.push(`Soru ${n}: seçenek sayısı 2 ile 6 arasında olmalı.`);
       else if (r.correctChoice && LETTERS.indexOf(r.correctChoice) >= r.choiceCount) errs.push(`Soru ${n}: doğru cevap (${r.correctChoice}) seçenek aralığı dışında.`);
     }
-    if (r.text.length > 2000) errs.push(`Soru ${n}: metin en fazla 2000 karakter olabilir.`);
+    if (r.text.length > MAX_TEXT) errs.push(`Soru ${n}: metin en fazla ${MAX_TEXT} karakter olabilir.`);
+    if (r.explanation.length > MAX_EXPLANATION) errs.push(`Soru ${n}: cevap açıklaması en fazla ${MAX_EXPLANATION} karakter olabilir.`);
+    if (r.type === 'CHOICE') {
+      for (const o of optionRows(r)) {
+        if (o.text.length > MAX_OPTION_TEXT) errs.push(`Soru ${n}: ${o.letter} seçeneği en fazla ${MAX_OPTION_TEXT} karakter olabilir.`);
+        if (o.rationale.length > MAX_RATIONALE) errs.push(`Soru ${n}: ${o.letter} açıklaması en fazla ${MAX_RATIONALE} karakter olabilir.`);
+      }
+    }
     if (r.topic.trim().length > 120) errs.push(`Soru ${n}: konu en fazla 120 karakter olabilir.`);
   });
   return errs;
@@ -137,6 +188,7 @@ export function buildRequest(title: string, examDate: string, rows: QuestionDraf
       choiceCount: choice ? r.choiceCount : null,
       correctChoice: choice ? r.correctChoice : null,
       topicIds: r.topicIds,
+      ...(r.contentEdited ? { options: requestOptions(r), explanation: r.explanation.trim() ? r.explanation : null } : {}),
     };
   });
   return { title: title.trim(), examDate: examDate || null, questions };

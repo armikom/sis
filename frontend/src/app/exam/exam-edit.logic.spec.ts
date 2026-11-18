@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  applyKey, bulkRows, buildRequest, destructiveChanges, keyString, moveRow, newRow, parseKey, totalPoints, validate,
+  applyKey, bulkRows, buildRequest, destructiveChanges, fromDto, hasContent, optionRows, setOption, keyString, moveRow, newRow, parseKey, totalPoints, validate,
 } from './exam-edit.logic';
 import type { QuestionDto } from '../core/api.models';
 
@@ -58,7 +58,7 @@ describe('validate', () => {
     expect(validate('a', [newRow({ maxPoints: 1001 })])).toHaveLength(1);
     expect(validate('a', [newRow({ choiceCount: 7 })])).toHaveLength(1);
     expect(validate('a', [newRow({ choiceCount: 3, correctChoice: 'D' })])).toHaveLength(1);
-    expect(validate('a', [newRow({ text: 'x'.repeat(2001) })])).toHaveLength(1);
+    expect(validate('a', [newRow({ text: 'x'.repeat(20001) })])).toHaveLength(1);
     expect(validate('a', Array.from({ length: 201 }, () => newRow()))).toHaveLength(1);
   });
   it('ignores choice fields on non-CHOICE rows', () => {
@@ -76,6 +76,38 @@ describe('buildRequest', () => {
     expect(req.examDate).toBeNull();
     expect(req.questions[0]).toEqual({ id: 12, type: 'CHOICE', text: null, topic: 'Türev', maxPoints: 4, choiceCount: 4, correctChoice: 'B', topicIds: [] });
     expect(req.questions[1]).toEqual({ type: 'OPEN', text: null, topic: null, maxPoints: 10, choiceCount: null, correctChoice: null, topicIds: [] });
+  });
+
+  it('leaves options and explanation out unless the content was opened or already recorded', () => {
+    const untouched = buildRequest('V', '', [newRow({ options: [{ letter: 'A', text: 'x', rationale: '' }] })]).questions[0];
+    expect('options' in untouched).toBe(false);
+    expect('explanation' in untouched).toBe(false);
+
+    const opened = buildRequest('V', '', [newRow({ contentEdited: true, choiceCount: 2, explanation: ' ', options: [
+      { letter: 'A', text: 'yes', rationale: 'because' }, { letter: 'B', text: '', rationale: '' }, { letter: 'C', text: 'hidden', rationale: '' },
+    ] })]).questions[0];
+    expect(opened.options).toEqual([{ letter: 'A', text: 'yes', rationale: 'because' }]);
+    expect(opened.explanation).toBeNull();
+
+    const open = buildRequest('V', '', [newRow({ type: 'OPEN', contentEdited: true, explanation: 'Why', options: [{ letter: 'A', text: 'x', rationale: '' }] })]).questions[0];
+    expect(open.options).toEqual([]);
+    expect(open.explanation).toBe('Why');
+  });
+
+  it('marks loaded questions with content as edited, so a save keeps sending it', () => {
+    const base = { id: 1, position: 1, type: 'CHOICE' as const, text: null, topic: null, maxPoints: 4, choiceCount: 4, correctChoice: 'A' };
+    expect(fromDto({ ...base, options: [{ letter: 'b', text: 'two', rationale: null }] })).toMatchObject({ contentEdited: true, options: [{ letter: 'B', text: 'two', rationale: '' }] });
+    expect(fromDto({ ...base, options: [], explanation: null }).contentEdited).toBe(false);
+  });
+});
+
+describe('content helpers', () => {
+  it('shows one option row per letter up to choiceCount and edits them by letter', () => {
+    const r = newRow({ choiceCount: 3, options: [{ letter: 'B', text: 'b', rationale: '' }, { letter: 'E', text: 'e', rationale: '' }] });
+    expect(optionRows(r).map(o => `${o.letter}:${o.text}`)).toEqual(['A:', 'B:b', 'C:']);
+    expect(setOption(r.options, 'A', { rationale: 'r' }).map(o => o.letter)).toEqual(['A', 'B', 'E']);
+    expect(hasContent(r)).toBe(true);
+    expect(hasContent(newRow({ choiceCount: 2, options: [{ letter: 'C', text: 'x', rationale: '' }] }))).toBe(false);
   });
 });
 

@@ -52,10 +52,26 @@ export interface MyResultQuestionDto {
   position: number; text: string | null; type: QuestionType; myAnswer: string | null; correctChoice: string | null;
   /** null: not a choice question (or not graded as right/wrong). */
   correct: boolean | null; points: number | null; maxPoints: number; topics?: TopicDto[];
+  options?: ExamOptionDto[]; explanation?: string | null;
+  /** Class statistics of this question; absent = none. */
+  stats?: MyResultQuestionStatsDto | null;
 }
+export interface MyResultQuestionStatsDto {
+  answered: number;
+  /** 0..1, or null when not computable. */
+  correctShare: number | null;
+  averagePoints: number | null;
+  /** CHOICE: letter → count plus "blank"; {} otherwise. */
+  choiceCounts: Record<string, number> | null;
+}
+export interface MyResultStatsDto { participants: number; average: number | null; median: number | null; maxPoints: number; }
 export interface ReviewTopicDto { topic: TopicDto; missed: number; total: number; }
 /** GET /api/courses/{id}/my-results/{examId} (published exams only; 404 otherwise). */
-export interface MyResultDetailDto extends MyResultDto { questions: MyResultQuestionDto[]; reviewTopics: ReviewTopicDto[]; }
+export interface MyResultDetailDto extends MyResultDto {
+  questions: MyResultQuestionDto[]; reviewTopics: ReviewTopicDto[];
+  /** Class statistics; absent = none. */
+  stats?: MyResultStatsDto | null;
+}
 
 export interface ClassroomDto { id: number; name: string; latitude?: number; longitude?: number; radiusM?: number; bleBeaconId?: string; hasBleKey: boolean; }
 export interface BleKeyResult { beaconId: string; keyHex: string; }
@@ -126,10 +142,19 @@ export interface QuestionDto {
   topicIds?: number[];
   /** Effective topics: the explicit ones plus the linked pool question's (read-only). */
   topics?: TopicDto[];
+  /** Option texts and rationales, ordered by letter; may be empty. */
+  options?: ExamOptionDto[];
+  explanation?: string | null;
 }
+/** One answer option of an exam question (CHOICE). */
+export interface ExamOptionDto { letter: string; text: string | null; rationale: string | null; }
 export interface QuestionRequest {
   id?: number | null; type: QuestionType; text?: string | null; topic?: string | null;
   maxPoints: number; choiceCount?: number | null; correctChoice?: string | null; topicIds?: number[];
+  /** Absent = unchanged; present = replaces the set. */
+  options?: ExamOptionDto[];
+  /** Absent = unchanged. */
+  explanation?: string | null;
 }
 export interface ExamDto {
   id: number; courseId: number; courseCode: string; courseName: string; title: string;

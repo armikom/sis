@@ -125,6 +125,11 @@ export const MSG = {
     myAnswer: 'Cevabınız', correctAnswer: 'Doğru cevap', blank: 'Boş', right: 'Doğru', wrong: 'Yanlış', partial: 'Kısmi',
     points: 'Puan', noQuestions: 'Gösterilecek soru yok.', notPublished: 'Bu sınavın sonuçları henüz açıklanmadı.',
     detail: 'Ayrıntılar',
+    pageTitle: 'Sınav değerlendirmesi', myScore: 'Puanınız', classAverage: 'Sınıf ortalaması', median: 'Ortanca',
+    participants: (n: number) => `${n} öğrenci`, mostMissed: 'En çok yanlış yapılanlar',
+    explanation: 'Cevap açıklaması', showAll: 'Tüm açıklamaları göster', hideAll: 'Diğer açıklamaları gizle',
+    mine: 'Sizin cevabınız', key: 'Doğru cevap', blankAnswers: 'Boş bırakan',
+    answered: (n: number) => `${n} öğrenci yanıtladı`, classAvgPoints: 'Sınıf ortalaması', options: 'Seçenekler',
   },
   errors: { generic: 'Bir hata oluştu.', network: 'Bağlantı hatası. İnternet bağlantınızı kontrol edin.' },
 } as const;
