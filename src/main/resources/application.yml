@@ -86,3 +86,8 @@ app:
     attempt-ttl-seconds: 180
     student-no-pattern: "^[0-9]{5,12}$"
     max-scans-per-attempt: 60
+  # Question pool AI (OpenRouter). Without OPENROUTER_API_KEY the AI check, explanations and ask-AI are off.
+  ai:
+    openrouter-url: ${OPENROUTER_URL:https://openrouter.ai/api/v1/chat/completions}
+    openrouter-key: ${OPENROUTER_API_KEY:}
+    openrouter-model: ${OPENROUTER_MODEL:anthropic/claude-sonnet-5.5}

@@ -63,10 +63,11 @@ public class SecurityConfig {
             .securityContext(sc -> sc.securityContextRepository(new RequestAttributeSecurityContextRepository()))
             .csrf(csrf -> csrf
                 .spa()
-                .ignoringRequestMatchers("/api/public/**"))
+                // /mcp authenticates with a bearer token (agent module), never with the session cookie.
+                .ignoringRequestMatchers("/api/public/**", "/mcp"))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/public/**", "/api/auth/login", "/api/auth/csrf", "/api/auth/request",
-                        "/api/auth/verify", "/api/auth/logout", "/actuator/health").permitAll()
+                        "/api/auth/verify", "/api/auth/logout", "/actuator/health", "/mcp").permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .requestMatchers("/api/**", "/actuator/**").authenticated()
                 .anyRequest().permitAll())

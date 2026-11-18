@@ -20,8 +20,12 @@ public record AppProperties(
         @Valid Retention retention,
         @Valid RateLimit rateLimit,
         @Valid Ble ble,
-        @Valid Checkin checkin
+        @Valid Checkin checkin,
+        @Valid Ai ai
 ) {
+    /** OpenRouter access for the question pool's AI features; an empty key switches them off. */
+    public record Ai(String openrouterUrl, String openrouterKey, String openrouterModel) {}
+
     public record Admin(String username, String password) {}
 
     /** DB-backed sign-in sessions and mailed login links (core.auth). */

@@ -8,7 +8,8 @@ One course-centred system that merges **yoklama** (rotating-QR lecture attendanc
   - `core` — people, courses (with term and per-course settings), enrollments (OWNER / INSTRUCTOR / ASSISTANT / STUDENT), chapters, sign-in (e-mail magic link + username/password, DB-backed sessions), mail (SMTP or EWS), per-course authorisation (`CourseAccess`)
   - attendance (`attendance`, `checkin`, `session`, `classroom`, `crypto`, `decision`, `frames`, `live`, `export`) — rotating-QR check-in, unchanged protocol (`docs/legacy-yoklama/02-PROTOCOL.md` is normative)
   - `exam` — exams, result entry, analysis
-  - `pool`, `agent` — question pool and MCP (added by their own modules)
+  - `pool` — student-written question pool per course (chapters, questions, attempts, discussion, flags, staff review, AI check via OpenRouter, exam builder on the unified exam tables); API in `docs/API-POOL.md`
+  - `agent` — MCP server at `/mcp` (personal bearer tokens, course-aware tools for students and staff); see `docs/MCP.md`
 - **Frontend:** Angular 22 (standalone, zoneless, signals), QR decoding via zxing-wasm
 - **Database:** PostgreSQL only; schema in `src/main/resources/db/migration` (Flyway)
 - **BLE beacon:** ESP32 firmware in `firmware/` (optional proximity check)
@@ -54,6 +55,8 @@ App: http://localhost:8790 — `admin` / `admin123` unless changed in `.env`. Pr
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` | SMTP for sign-in links |
 | `EWS_URL` | Exchange Web Services endpoint; when set, mail goes through EWS with `SMTP_USER`/`SMTP_PASSWORD` |
 | `APP_FRAMES_DIR` | Camera frame storage (default `./data/frames`, 7-day retention) |
+| `OPENROUTER_API_KEY` | Question pool AI (question check, study explanations, ask-AI); empty = AI off |
+| `OPENROUTER_MODEL` / `OPENROUTER_URL` | Optional; default `anthropic/claude-sonnet-5.5` and the OpenRouter chat API |
 | `TZ` | Time zone for CSV exports (default `Europe/Istanbul`) |
 
 ## Usage
@@ -61,6 +64,8 @@ App: http://localhost:8790 — `admin` / `admin123` unless changed in `.env`. Pr
 - **Sign in** at `/login`: everybody with an e-mail on a course roster (or staff list) gets a single-use link valid for 15 minutes; staff may also use username + password. Staff land on `/t`, students on `/courses`.
 - **Staff** (`/t`): create a course (creator becomes owner), import the roster (`studentNo, fullName[, email]` or `email, fullName, studentNo`, pasted or as CSV), add co-instructors/assistants, set course options, run attendance sessions (projector view, live dashboard, review, CSV) and exams.
 - **Students**: check in at `/` or by scanning the projected QR (`/c/:code`, `/q/:token`, no sign-in needed; only student numbers on the course roster are accepted); signed in, `/courses` shows their own attendance and exam results.
+- **Question pool** (course setting `poolEnabled`): staff create chapters and their texts, review student questions (approve / send back / reject), handle reports, see participation and draw exams with up to 4 shuffled forms; students write questions (`questionsPerChapter` per chapter), answer others' questions (answer hidden until the first attempt, only the first counts) and discuss them. Limits and the AI course description (`aiContext`) are course settings.
+- **AI agents**: everyone can create a personal MCP token (`/api/mcp-token`) and connect Claude Code or another MCP client to `/mcp`; see `docs/MCP.md`.
 - **System admin**: `/t/admin/people` — search, edit, deactivate or delete people.
 
 ## Security

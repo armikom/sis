@@ -1,0 +1,120 @@
+package com.armikom.sis.agent;
+
+import tools.jackson.databind.JsonNode;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Ready-made prompts the MCP client can show as commands (for example "/study_chapter" in Claude Code). Student
+ * prompts are listed for people with a student enrollment, staff prompts for course staff. Every prompt takes an
+ * optional {@code course}.
+ */
+final class McpPrompts {
+
+    private record Prompt(String name, String title, String description, boolean staff, List<Arg> args,
+                          String text) {
+    }
+
+    private record Arg(String name, String description, boolean required) {
+    }
+
+    private static final Arg COURSE = new Arg("course", "Course code or id (empty = your only course)", false);
+
+    private static final List<Prompt> PROMPTS = List.of(
+            new Prompt("study_chapter", "Study a chapter", "Learn one chapter step by step, then answer its questions.",
+                    false, List.of(new Arg("week", "Chapter (week) number", true), COURSE), """
+                            Let's study chapter {week}{course_text}.
+                            1. Call get_progress and read my saved notes for chapter {week}.
+                            2. Call read_chapter for chapter {week}. Teach me the main ideas in small parts, with short \
+                            examples. After each part, ask me one quick check question in your own words.
+                            3. Then use next_question for chapter {week}. Show me the stem and options; I choose. Do not \
+                            give hints before I choose.
+                            4. Save my weak points with update_study_state, and write log_study_session at the end."""),
+            new Prompt("quiz_me", "Quiz me", "Answer new pool questions one by one.", false,
+                    List.of(new Arg("week", "Chapter (week) number (empty = any chapter)", false),
+                            new Arg("count", "How many questions (default 5)", false), COURSE),
+                    """
+                            Quiz me with {count} new questions from the pool{week_text}{course_text}. Use next_question, \
+                            show the stem and the four options, and wait for my choice. Send my choice with \
+                            answer_question, then explain the result shortly. At the end, give a short score, save weak \
+                            points with update_study_state and write log_study_session."""),
+            new Prompt("review_mistakes", "Review my mistakes",
+                    "Practise again the questions you answered wrong.", false,
+                    List.of(new Arg("week", "Chapter (week) number (empty = any chapter)", false), COURSE), """
+                            Help me review my mistakes{week_text}{course_text}. Use next_review_question, wait for my \
+                            choice, check it with practice_answer and explain with the chapter text. Continue until the \
+                            queue has no wrong answers or I stop. Then update my study state and write \
+                            log_study_session."""),
+            new Prompt("improve_my_question", "Get feedback on my question",
+                    "Feedback on a question you are writing. The agent does not write it for you.", false,
+                    List.of(new Arg("week", "Chapter (week) number", true), COURSE), """
+                            I want to write a question for chapter {week}{course_text}. First call list_questions for \
+                            chapter {week} so we avoid a duplicate, and read_chapter for chapter {week}. Then I will \
+                            paste my draft. Check it like a CTFL item writer: one clear stem, exactly one correct option, \
+                            believable wrong options, a reason for every option, a reference to the chapter text, simple \
+                            English. Tell me what to fix, but do not write the question for me. When I say it is ready, \
+                            show the final version and ask before submit_question."""),
+            new Prompt("review_pending", "Review waiting questions",
+                    "Go through the waiting questions with the AI check and statistics.", true,
+                    List.of(new Arg("week", "Chapter (week) number (empty = all chapters)", false), COURSE), """
+                            Let's review the waiting questions{week_text}{course_text}. Use list_questions_for_review \
+                            (PENDING). For each question give me: a one-line summary, whether the key is right, problems \
+                            (clarity, one correct answer, distractors, duplicates, chapter fit), and your suggestion \
+                            (APPROVE, REVISE with a simple-English note, or REJECT). Wait for my decision before \
+                            calling decide_question."""),
+            new Prompt("weekly_report", "Weekly class report",
+                    "Participation, study state and question quality in one report.", true, List.of(COURSE), """
+                            Write a short weekly report for me in Turkish{course_text}. Use class_overview, \
+                            question_counts, study_overview, question_stats and list_flags. Include: students with low \
+                            participation (no questions or few answers), chapters that need more approved questions for \
+                            the exam, the most common weak points from the students' study notes, questions with a \
+                            possibly wrong key or weak distractors, and open problem reports."""));
+
+    private McpPrompts() {
+    }
+
+    static List<Map<String, Object>> list(boolean student, boolean staff) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Prompt p : PROMPTS) {
+            if (p.staff() ? !staff : !student) {
+                continue;
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("name", p.name());
+            m.put("title", p.title());
+            m.put("description", p.description());
+            m.put("arguments", p.args().stream()
+                    .map(a -> Map.of("name", a.name(), "description", a.description(), "required", a.required()))
+                    .toList());
+            out.add(m);
+        }
+        return out;
+    }
+
+    static Map<String, Object> get(boolean student, boolean staff, String name, JsonNode args) {
+        Prompt p = PROMPTS.stream().filter(x -> x.name().equals(name) && (x.staff() ? staff : student))
+                .findFirst().orElseThrow(() -> new McpController.RpcError(-32602, "Unknown prompt: " + name));
+        String week = value(args, "week");
+        String count = value(args, "count");
+        String course = value(args, "course");
+        for (Arg a : p.args()) {
+            if (a.required() && value(args, a.name()).isEmpty()) {
+                throw new McpController.RpcError(-32602, "The argument '" + a.name() + "' is required.");
+            }
+        }
+        String text = p.text().replace("{week}", week).replace("{count}", count.isEmpty() ? "5" : count)
+                .replace("{week_text}", week.isEmpty() ? "" : " for chapter " + week)
+                .replace("{course_text}", course.isEmpty() ? "" : " in course " + course
+                        + " (pass course=" + course + " to the tools)");
+        return Map.of("description", p.description(), "messages",
+                List.of(Map.of("role", "user", "content", Map.of("type", "text", "text", text))));
+    }
+
+    private static String value(JsonNode args, String name) {
+        JsonNode v = args == null ? null : args.path(name);
+        return v == null || v.isMissingNode() || v.isNull() || !v.isValueNode() ? "" : v.asString().trim();
+    }
+}

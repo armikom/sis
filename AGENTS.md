@@ -20,6 +20,11 @@ Read `README.md`, `docs/PROPOSAL.md` (sections 2–3) and `docs/DECISIONS.md` be
 - Per-course checks: `requireMember(courseId)`, `requireStaff(courseId)`, `requireOwnerOrAdmin(courseId)` (return the `Course`; 401/403/404 as `ApiException`), `isStaff(courseId)`, `roleIn(courseId)`, `isStaffAnywhere()`, `requireSystemAdmin()`. System admins pass every check.
 - `/api/admin/**` requires a system admin; `/api/public/**` is open and CSRF-exempt; all other `/api/**` need a signed-in person.
 
+## Pool and agent modules
+- `com.armikom.sis.pool` / `com.armikom.sis.agent` keep question-pool's JSON field names: snake_case request records (`@JsonNaming(SnakeCaseStrategy)`) and map responses built from SQL column names. Do not change the global Jackson naming. The endpoint contract is `docs/API-POOL.md`; keep it in sync.
+- Pool errors: throw `PoolException` (English message shown by the UI); access through `PoolAccess` (course membership/staff + `poolEnabled`).
+- MCP tools call the pool controllers so the rules stay in one place; `/mcp` runs with the token's person as the security principal (`docs/MCP.md`).
+
 ## Code style
 - Java 21 (records, switch expressions), constructor injection, `final` fields, DTOs as records. Spring Boot 4 / Jackson 3: `tools.jackson.*`.
 - Angular: standalone + signals + `inject()`, zoneless, `@if/@for/@switch`. New staff routes under `t` (staffGuard), student routes under `courses` (authGuard).

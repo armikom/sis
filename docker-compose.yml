@@ -49,6 +49,8 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       MAIL_FROM: ${MAIL_FROM:-}
       EWS_URL: ${EWS_URL:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
       TZ: ${TZ:-Europe/Istanbul}
     volumes:
       - frame_data:/app/data/frames
