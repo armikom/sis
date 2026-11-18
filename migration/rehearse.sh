@@ -35,7 +35,7 @@ echo ">> applying V1__init.sql (what Flyway does on first app start)"
 
 if [ "${BOOTSTRAP_ADMIN:-1}" = "1" ]; then
   echo ">> simulating the bootstrap admin person created by the app on first start"
-  "${PSQL_CMD[@]}" "$URL" -v ON_ERROR_STOP=1 -q -c "insert into person(full_name, username, password_hash, nickname, system_admin) values ('Administrator', 'admin', 'bootstrap-hash', 'BootstrapAdmin', true)"
+  "${PSQL_CMD[@]}" "$URL" -v ON_ERROR_STOP=1 -q -c "insert into person(full_name, username, password_hash, nickname, system_admin) values ('Administrator', 'admin', 'bootstrap-hash', 'Instructor', true)"
 fi
 
 echo ">> load-legacy"

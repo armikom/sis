@@ -55,3 +55,6 @@ Defaults chosen during implementation, one per line (`- [Area] decision — reas
 - [Agent] import_students delegates to RosterService.importText(mode MERGE), so lines need a student number (core rule) and the result is core's ImportResult (camelCase). Teacher deletion tools did not exist and none were added.
 - [Agent] study_log has no course column: entries without a chapter are shown to the student in get_progress of every course but not to staff in student_detail; staff see only entries about chapters of their course. No V1 change.
 - [Agent] Prompts and tool texts say "chapter" instead of "week"; prompt argument names (`week`, `count`) kept, plus optional `course`.
+- [Integration] Migration: the bootstrap admin's nickname is regenerated when its row is taken over — the app names it `Instructor`, which question-pool already uses; found when rehearsing on an app-created database.
+- [Integration] Production sets `APP_LINK_HOSTS` to the SIS hostname plus the two old hostnames, so mailed login links cannot be pointed elsewhere by a forged Host header.
+- [Integration] Uncommitted MCP work in the question-pool folder was ported from its working tree; that folder was not modified or committed.

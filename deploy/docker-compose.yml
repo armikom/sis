@@ -41,6 +41,8 @@ services:
       # classrooms and signs the QR/check-in tokens. A different value breaks existing classrooms.
       APP_MASTER_SECRET: ${APP_MASTER_SECRET:?APP_MASTER_SECRET must be set (same value as the old yoklama deployment)}
       APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-https://sis.armikom.com}
+      # Hosts allowed in mailed login links (stops forged Host headers). Include the old hostnames while they redirect here.
+      APP_LINK_HOSTS: ${APP_LINK_HOSTS:-sis.armikom.com,yoklama.armikom.com,seng403-questions.armikom.com}
       APP_ADMIN_USERNAME: ${APP_ADMIN_USERNAME:-admin}
       APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:?APP_ADMIN_PASSWORD must be set}
       APP_FRAMES_DIR: /app/data/frames

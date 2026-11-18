@@ -185,7 +185,8 @@ begin
                 student_no    = r.student_no,
                 email         = lower(r.email),
                 password_hash = r.password_hash,
-                nickname      = coalesce(r.nickname, nickname),
+                -- the app gives its bootstrap admin the nickname 'Instructor', which question-pool already uses
+                nickname      = coalesce(r.nickname, pg_temp.gen_nick()),
                 system_admin  = (r.role = 'ADMIN'),
                 active        = r.enabled and coalesce(r.qp_active, true),
                 deleted_at    = r.deleted_at,
