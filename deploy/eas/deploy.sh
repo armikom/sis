@@ -33,7 +33,8 @@ docker build --pull -q -t "sis-app:$SHA" src
 
 if docker compose ps --status running --services 2>/dev/null | grep -qx db; then
   echo "==> backup before update"
-  BACKUP_DIR=/srv/backups/sis ./backup.sh
+  # </dev/null: this script arrives on stdin, and `docker compose exec` in backup.sh would swallow the rest of it.
+  BACKUP_DIR=/srv/backups/sis ./backup.sh </dev/null
 fi
 
 PREV=$(docker image inspect -f '{{.Id}}' sis-app:current 2>/dev/null || true)
