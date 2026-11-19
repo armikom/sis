@@ -1,7 +1,8 @@
 {
   // Commands from AGENTS.md. "Check: all" runs what must pass before a commit.
   // Frontend tasks put /opt/homebrew/bin first on PATH: Angular needs Node 22.22.3+ / 24.15+ / 26+, and an older
-  // nvm default would fail. Harmless where that directory does not exist.
+  // nvm default would fail. Harmless where that directory does not exist. They run in a non-login bash: a login
+  // shell (e.g. fish -l with nvm.fish) would put the nvm Node back in front of PATH.
   "version": "2.0.0",
   "tasks": [
     {
@@ -38,7 +39,7 @@
       "label": "Frontend: npm install",
       "type": "shell",
       "command": "npm install",
-      "options": { "cwd": "${workspaceFolder}/frontend", "env": { "PATH": "/opt/homebrew/bin:${env:PATH}" } },
+      "options": { "cwd": "${workspaceFolder}/frontend", "env": { "PATH": "/opt/homebrew/bin:${env:PATH}" }, "shell": { "executable": "/bin/bash", "args": ["-c"] } },
       "problemMatcher": []
     },
     {
@@ -46,7 +47,7 @@
       "detail": "npm start on :4200, /api proxied to :8080",
       "type": "shell",
       "command": "npm start",
-      "options": { "cwd": "${workspaceFolder}/frontend", "env": { "PATH": "/opt/homebrew/bin:${env:PATH}" } },
+      "options": { "cwd": "${workspaceFolder}/frontend", "env": { "PATH": "/opt/homebrew/bin:${env:PATH}" }, "shell": { "executable": "/bin/bash", "args": ["-c"] } },
       "isBackground": true,
       "problemMatcher": {
         "owner": "angular",
@@ -78,7 +79,7 @@
       "label": "Test: frontend",
       "type": "shell",
       "command": "npm test -- --watch=false",
-      "options": { "cwd": "${workspaceFolder}/frontend", "env": { "PATH": "/opt/homebrew/bin:${env:PATH}" } },
+      "options": { "cwd": "${workspaceFolder}/frontend", "env": { "PATH": "/opt/homebrew/bin:${env:PATH}" }, "shell": { "executable": "/bin/bash", "args": ["-c"] } },
       "group": "test",
       "problemMatcher": []
     },
@@ -86,7 +87,7 @@
       "label": "Build: frontend",
       "type": "shell",
       "command": "npx ng build",
-      "options": { "cwd": "${workspaceFolder}/frontend", "env": { "PATH": "/opt/homebrew/bin:${env:PATH}" } },
+      "options": { "cwd": "${workspaceFolder}/frontend", "env": { "PATH": "/opt/homebrew/bin:${env:PATH}" }, "shell": { "executable": "/bin/bash", "args": ["-c"] } },
       "group": "build",
       "problemMatcher": []
     },
