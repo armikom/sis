@@ -35,3 +35,6 @@ firmware/ble-beacon/secrets.h
 
 # Env
 .env
+
+# Not for the public repository: exam answer keys and other course-private migration data
+migration/private/

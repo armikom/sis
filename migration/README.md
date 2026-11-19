@@ -13,7 +13,11 @@ One-off, rehearsed, single-transaction migration. Primary keys are preserved eve
 Editable defaults are at the top of `migrate.sql`: the course code that owns the question pool (`SENG 403`),
 the course skip list (`TEST101`), the test-student rule (e-mail domain other than `stu.thk.edu.tr`, unless the
 account authored questions), the term (`2026-FALL`), the pool settings and the yoklama-username -> question-pool-e-mail
-mapping list (`gokcer` -> `owner@example.edu`).
+mapping list. The question-pool e-mail of yoklama user `gokcer` is not in the repository: pass it as
+`-v owner_qp_email=<e-mail>` to every `migrate.sql` run (`OWNER_QP_EMAIL=<e-mail>` for `rehearse.sh`).
+
+**Kept out of this public repository:** `migration/private/` (git-ignored) holds `link-midterm1.sql`, which contains
+the SENG 403 Midterm 1 answer key. Keep it on the machine that runs the migration only.
 
 ## 0. Rehearse first (any laptop with docker and psql >= 17.6)
 
@@ -60,7 +64,7 @@ override, or use variant B):
 ```bash
 DB=postgresql://sis:$DB_PASSWORD@127.0.0.1:5433/sis
 migration/load-legacy.sh yoklama.sql questionpool.sql "$DB"
-psql "$DB" -v ON_ERROR_STOP=1 -f migration/migrate.sql
+psql "$DB" -v ON_ERROR_STOP=1 -v owner_qp_email="$OWNER_QP_EMAIL" -f migration/migrate.sql
 psql "$DB" -v ON_ERROR_STOP=1 -f migration/verify.sql
 ```
 
@@ -70,16 +74,16 @@ Variant B, psql inside the db container (nothing published):
 cd deploy
 DB=postgresql://sis:$DB_PASSWORD@localhost:5432/sis
 PSQL="docker compose exec -T db psql" ../migration/load-legacy.sh ../yoklama.sql ../questionpool.sql "$DB"
-docker compose exec -T db psql -U sis -d sis -v ON_ERROR_STOP=1 < ../migration/migrate.sql
+docker compose exec -T db psql -U sis -d sis -v ON_ERROR_STOP=1 -v owner_qp_email="$OWNER_QP_EMAIL" < ../migration/migrate.sql
 docker compose exec -T db psql -U sis -d sis -v ON_ERROR_STOP=1 < ../migration/verify.sql
 ```
 
 After `verify.sql` passes, link SENG 403 "Midterm 1" to the pool questions it was drawn from (sets question text,
 topic = chapter title and `pool_question_id` for its 25 questions; refuses to run if the exam's answer key differs
-from the Form A key in the script):
+from the Form A key in the script). The script is in the git-ignored `migration/private/` (see above):
 
 ```bash
-psql "$DB" -v ON_ERROR_STOP=1 -f migration/link-midterm1.sql
+psql "$DB" -v ON_ERROR_STOP=1 -f migration/private/link-midterm1.sql
 ```
 
 Then start the SIS application once on the migrated database (it derives the `topic` rows from the numbered

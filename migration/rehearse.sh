@@ -2,12 +2,15 @@
 # Full local dress rehearsal of the migration in a throw-away postgres:17 container.
 #
 # Usage: rehearse.sh <yoklama.sql> <questionpool.sql>
-# Env:   REHEARSE_PORT (default: a free port), KEEP=1 to leave the container running afterwards,
+# Env:   OWNER_QP_EMAIL (required): question-pool e-mail of yoklama user gokcer (see migrate.sql, staff_map),
+#        REHEARSE_PORT (default: a free port), KEEP=1 to leave the container running afterwards,
 #        BOOTSTRAP_ADMIN=0 to skip simulating the admin person the app creates on first start.
+#        migration/private/link-midterm1.sql (holds the Midterm 1 answer key, not in git) runs when present.
 # Needs: docker, psql (PSQL env var to override the binary).
 set -euo pipefail
 
 if [ $# -ne 2 ]; then echo "usage: $0 <yoklama.sql> <questionpool.sql>" >&2; exit 2; fi
+: "${OWNER_QP_EMAIL:?set OWNER_QP_EMAIL to the question-pool e-mail of yoklama user gokcer}"
 HERE=$(cd "$(dirname "$0")" && pwd)
 YOKLAMA_DUMP=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 QP_DUMP=$(cd "$(dirname "$2")" && pwd)/$(basename "$2")
@@ -44,16 +47,20 @@ echo ">> load-legacy"
 PSQL="${PSQL_CMD[*]}" "$HERE/load-legacy.sh" "$YOKLAMA_DUMP" "$QP_DUMP" "$URL"
 
 echo ">> migrate"
-"${PSQL_CMD[@]}" "$URL" -v ON_ERROR_STOP=1 -f "$HERE/migrate.sql"
+"${PSQL_CMD[@]}" "$URL" -v ON_ERROR_STOP=1 -v owner_qp_email="$OWNER_QP_EMAIL" -f "$HERE/migrate.sql"
 
 echo ">> verify"
 "${PSQL_CMD[@]}" "$URL" -v ON_ERROR_STOP=1 -f "$HERE/verify.sql"
 
-echo ">> link Midterm 1 to the question pool"
-"${PSQL_CMD[@]}" "$URL" -v ON_ERROR_STOP=1 -q -f "$HERE/link-midterm1.sql"
+if [ -f "$HERE/private/link-midterm1.sql" ]; then
+  echo ">> link Midterm 1 to the question pool"
+  "${PSQL_CMD[@]}" "$URL" -v ON_ERROR_STOP=1 -q -f "$HERE/private/link-midterm1.sql"
+else
+  echo ">> skip Midterm 1 link (migration/private/link-midterm1.sql not present)"
+fi
 
 echo ">> guard test: a second migrate run must fail loudly"
-if "${PSQL_CMD[@]}" "$URL" -v ON_ERROR_STOP=1 -q -f "$HERE/migrate.sql" >/dev/null 2>&1; then
+if "${PSQL_CMD[@]}" "$URL" -v ON_ERROR_STOP=1 -v owner_qp_email="$OWNER_QP_EMAIL" -q -f "$HERE/migrate.sql" >/dev/null 2>&1; then
   echo "ERROR: second migrate run did not fail" >&2; exit 1
 fi
 echo "   ok (refused)"

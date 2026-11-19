@@ -31,10 +31,17 @@ select
 
 -- Explicit staff mapping for people whose yoklama username and question-pool e-mail differ.
 -- (Pairs whose username equals the e-mail, case-insensitive, are matched automatically.)
+-- The question-pool e-mail of yoklama user 'gokcer' is passed in so that it stays out of this public repository:
+--   psql ... -v owner_qp_email=<e-mail> -f migrate.sql        (rehearse.sh: OWNER_QP_EMAIL=<e-mail>)
+\if :{?owner_qp_email}
+\else
+\echo 'migrate.sql: pass -v owner_qp_email=<question-pool e-mail of yoklama user gokcer>'
+do $$ begin raise exception 'psql variable owner_qp_email is not set'; end $$;
+\endif
 create temp table staff_map(yoklama_username text, qp_email text);
 insert into staff_map values
-    ('gokcer', 'owner@example.edu')
-    -- , ('another.username', 'another@thk.edu.tr')
+    ('gokcer', :'owner_qp_email')
+    -- , ('another.username', 'another@example.edu')
     ;
 
 -- =====================================================================================================
