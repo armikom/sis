@@ -1,94 +1,110 @@
 {
+  // Commands from AGENTS.md. "Check: all" runs what must pass before a commit.
+  // Frontend tasks put /opt/homebrew/bin first on PATH: Angular needs Node 22.22.3+ / 24.15+ / 26+, and an older
+  // nvm default would fail. Harmless where that directory does not exist.
   "version": "2.0.0",
-  "options": {
-    "env": {
-      "JAVA_HOME": "/usr/lib/jvm/java-21-openjdk-amd64"
-    }
-  },
   "tasks": [
     {
-      "label": "Backend: Build (skip frontend)",
+      "label": "DB: Postgres up",
+      "detail": "docker compose up -d db (PostgreSQL 17 on 127.0.0.1:5433)",
       "type": "shell",
-      "command": "./mvnw",
-      "args": [
-        "compile",
-        "-Pno-frontend",
-        "-DskipTests"
-      ],
-      "group": "build",
-      "problemMatcher": "$javac"
-    },
-    {
-      "label": "Backend: Full Build + Tests",
-      "type": "shell",
-      "command": "./mvnw",
-      "args": ["verify"],
-      "group": "build",
-      "problemMatcher": "$javac"
-    },
-    {
-      "label": "Frontend: npm install",
-      "type": "shell",
-      "command": "npm",
-      "args": ["install"],
-      "options": {
-        "cwd": "${workspaceFolder}/frontend"
-      },
+      "command": "docker compose up -d --wait db",
       "problemMatcher": []
     },
     {
-      "label": "Frontend: Serve (dev)",
+      "label": "DB: Postgres stop",
       "type": "shell",
-      "command": "npm",
-      "args": ["start"],
-      "options": {
-        "cwd": "${workspaceFolder}/frontend"
-      },
+      "command": "docker compose stop db",
+      "problemMatcher": []
+    },
+    {
+      "label": "Backend: run (no debugger)",
+      "detail": "./mvnw -Pno-frontend spring-boot:run on :8080",
+      "type": "shell",
+      "command": "./mvnw -Pno-frontend spring-boot:run",
+      "dependsOn": "DB: Postgres up",
       "isBackground": true,
       "problemMatcher": {
-        "owner": "angular",
-        "pattern": {
-          "regexp": "^✘ \\[ERROR\\] (.+)$",
-          "message": 1
-        },
+        "owner": "spring-boot",
+        "pattern": { "regexp": "^(APPLICATION FAILED TO START)$", "message": 1 },
         "background": {
           "activeOnStart": true,
-          "beginsPattern": "^.*Rebuilding\\.\\.\\.",
-          "endsPattern": "^.*Application bundle generation (complete|failed)"
+          "beginsPattern": "Scanning for projects|Attaching agents",
+          "endsPattern": "Started SisApplication|APPLICATION FAILED TO START|BUILD FAILURE"
         }
       }
     },
     {
-      "label": "Frontend: Test",
+      "label": "Frontend: npm install",
       "type": "shell",
-      "command": "npm",
-      "args": ["test", "--", "--watch=false"],
-      "options": {
-        "cwd": "${workspaceFolder}/frontend"
-      },
+      "command": "npm install",
+      "options": { "cwd": "${workspaceFolder}/frontend", "env": { "PATH": "/opt/homebrew/bin:${env:PATH}" } },
+      "problemMatcher": []
+    },
+    {
+      "label": "Frontend: serve",
+      "detail": "npm start on :4200, /api proxied to :8080",
+      "type": "shell",
+      "command": "npm start",
+      "options": { "cwd": "${workspaceFolder}/frontend", "env": { "PATH": "/opt/homebrew/bin:${env:PATH}" } },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "angular",
+        "pattern": { "regexp": "^✘ \\[ERROR\\] (.+)$", "message": 1 },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "Building\\.\\.\\.|Changes detected",
+          "endsPattern": "Local:|Application bundle generation (complete|failed)"
+        }
+      }
+    },
+    {
+      "label": "Test: backend",
+      "detail": "./mvnw -Pno-frontend test (Testcontainers, Docker must run)",
+      "type": "shell",
+      "command": "./mvnw -Pno-frontend test",
+      "group": "test",
+      "problemMatcher": "$javac"
+    },
+    {
+      "label": "Test: backend (one class)",
+      "detail": "./mvnw -Pno-frontend test -Dtest=<class>",
+      "type": "shell",
+      "command": "./mvnw -Pno-frontend test -Dtest=${input:testClass}",
+      "group": "test",
+      "problemMatcher": "$javac"
+    },
+    {
+      "label": "Test: frontend",
+      "type": "shell",
+      "command": "npm test -- --watch=false",
+      "options": { "cwd": "${workspaceFolder}/frontend", "env": { "PATH": "/opt/homebrew/bin:${env:PATH}" } },
       "group": "test",
       "problemMatcher": []
     },
     {
-      "label": "Docker: Compose Up",
+      "label": "Build: frontend",
       "type": "shell",
-      "command": "docker",
-      "args": ["compose", "up", "--build", "-d"],
+      "command": "npx ng build",
+      "options": { "cwd": "${workspaceFolder}/frontend", "env": { "PATH": "/opt/homebrew/bin:${env:PATH}" } },
+      "group": "build",
       "problemMatcher": []
     },
     {
-      "label": "Docker: Compose Down",
-      "type": "shell",
-      "command": "docker",
-      "args": ["compose", "down"],
+      "label": "Check: all",
+      "detail": "Backend tests, frontend tests and frontend build (required before committing)",
+      "dependsOrder": "sequence",
+      "dependsOn": ["Test: backend", "Test: frontend", "Build: frontend"],
+      "group": { "kind": "test", "isDefault": true },
       "problemMatcher": []
-    },
+    }
+  ],
+  "inputs": [
     {
-      "label": "Docker: Postgres Only",
-      "type": "shell",
-      "command": "docker",
-      "args": ["compose", "up", "-d", "db"],
-      "problemMatcher": []
+      "id": "testClass",
+      "type": "promptString",
+      "description": "Test class (e.g. CoreApiIntegrationTest)",
+      "default": "CoreApiIntegrationTest"
     }
   ]
 }
