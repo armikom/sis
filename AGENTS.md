@@ -11,8 +11,32 @@ Read `README.md`, `docs/PROPOSAL.md` (sections 2–3) and `docs/DECISIONS.md` be
 ## Public repository
 This repository is public (github.com/armikom/sis). Never commit exam questions, answer keys, the question bank, real
 student or staff names/e-mails/numbers, database dumps or secrets. Course-private migration data goes to the
-git-ignored `migration/private/`; `docs/SENG403-soru-bankasi.md` (question bank) must stay uncommitted. Test data uses
+git-ignored `migration/private/`; question banks and exam documents never go into the repository. Test data uses
 `example.edu` addresses and made-up names. Before committing, check `git diff --cached` for such content.
+
+## Production (https://sis.armikom.com)
+Runs on eas.armikom.com, `/srv/apps/sis` (details: `deploy/eas/README.md`; server rules: `/srv/apps/AGENTS.md`).
+The production database holds real students' attendance, answers and exam results.
+- Deploy only with `deploy/eas/deploy.sh` (ships the committed `HEAD` of `main`). Never edit code or files on the server:
+  `src/` is replaced on every deploy and the containers are read-only.
+- Never change production data or schema by hand (`psql`, ad-hoc `UPDATE`/`DELETE`). Schema changes go through Flyway
+  migrations; one-off data fixes go through a reviewed migration or an app feature, with the user's approval.
+- Migrations are forward-only. `deploy.sh` takes a database backup before switching (`/srv/backups/sis`); do not skip
+  or bypass it. A migration that rewrites or drops data needs the user's go-ahead before deploying.
+- Rollback of the code: `ssh armikom@51.178.103.153 'cd /srv/apps/sis && docker tag sis-app:previous sis-app:current && docker compose up -d app'`.
+  If a migration already ran, the old code may not start: restore the pre-deploy backup instead (`deploy/eas/README.md`).
+- After a deploy check `curl -s https://sis.armikom.com/actuator/health` → `"status":"UP"`.
+
+## Production settings that must not change
+- `SERVER_FORWARD_HEADERS_STRATEGY=native` (`deploy/eas/compose.yml`): behind Cloudflare the visitor IP is appended to a
+  client-sent `X-Forwarded-For`; the default `framework` strategy takes the leftmost (forgeable) value and breaks the
+  per-IP rate limits. Keep `native` (rightmost non-internal address) whatever the proxy setup.
+- `APP_MASTER_SECRET` (server `.env`): signs QR/check-in tokens and encrypts classroom BLE keys. Never change it once
+  classrooms exist; before migrating old yoklama data it must equal the old yoklama value.
+- `APP_LINK_HOSTS` / `APP_PUBLIC_BASE_URL`: only these hosts appear in mailed sign-in links (stops Host-header
+  poisoning). A new public hostname must be added here, never removed from the check.
+- Ports: the app is published only on `127.0.0.1:8101`; the database has no published port and sits on an
+  `internal: true` network. Do not publish either to `0.0.0.0`.
 
 ## Rules that must not change
 - **Check-in protocol** (`docs/legacy-yoklama/02-PROTOCOL.md`) is normative: token format, HMAC inputs, encodings and test vectors are implemented exactly.
