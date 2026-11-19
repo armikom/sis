@@ -1,0 +1,99 @@
+# SIS on eas.armikom.com (Armikom application server). Lives on the server as /srv/apps/sis/compose.yml.
+# Follows the server rules in /srv/apps/AGENTS.md: own networks, own database, port only on 127.0.0.1,
+# host Caddy terminates TLS (/etc/caddy/sites/sis.caddy), no bind mounts (userns-remap).
+#
+# The image is built on the server by deploy.sh from a `git archive` of the repository and tagged
+# sis-app:<commit> and sis-app:current. This file only runs sis-app:current.
+#
+# Secrets come from /srv/apps/sis/.env (chmod 600): DB_PASSWORD, APP_MASTER_SECRET, APP_ADMIN_PASSWORD, ...
+name: sis
+
+x-hardening: &hardening
+  restart: unless-stopped
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: ["ALL"]
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+services:
+  db:
+    <<: *hardening
+    image: postgres:17
+    # The entrypoint needs these on first initialisation and to drop to the postgres user.
+    cap_add: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
+    read_only: true
+    tmpfs: ["/tmp", "/var/run/postgresql"]
+    shm_size: 128m
+    pids_limit: 200
+    mem_limit: 768m
+    cpus: 1.5
+    environment:
+      POSTGRES_DB: sis
+      POSTGRES_USER: sis
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+      TZ: Europe/Istanbul
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sis -d sis"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [internal]
+
+  app:
+    <<: *hardening
+    image: sis-app:current
+    read_only: true
+    tmpfs: ["/tmp"]
+    pids_limit: 300
+    mem_limit: 1g
+    cpus: 2.0
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/sis
+      SPRING_DATASOURCE_USERNAME: sis
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+      # Signs QR/check-in tokens and decrypts classroom BLE keys. Before migrating yoklama data it must be
+      # replaced with the old yoklama value (see NOTES.md); never change it once classrooms exist.
+      APP_MASTER_SECRET: ${APP_MASTER_SECRET:?APP_MASTER_SECRET must be set in .env}
+      APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-https://sis.eas.armikom.com}
+      APP_LINK_HOSTS: ${APP_LINK_HOSTS:-sis.eas.armikom.com}
+      APP_ADMIN_USERNAME: ${APP_ADMIN_USERNAME:-admin}
+      APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:?APP_ADMIN_PASSWORD must be set in .env}
+      APP_FRAMES_DIR: /app/data/frames
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      EWS_URL: ${EWS_URL:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
+      TZ: Europe/Istanbul
+      JAVA_OPTS: "-XX:MaxRAMPercentage=70.0 -Djava.io.tmpdir=/tmp"
+    volumes:
+      - frame_data:/app/data/frames
+    # Only the host Caddy connects here.
+    ports: ["127.0.0.1:8101:8080"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 90s
+    # internal: database; egress: SMTP/EWS and OpenRouter.
+    networks: [internal, egress]
+
+networks:
+  internal:
+    internal: true      # the database cannot reach the internet
+  egress: {}
+
+volumes:
+  pg_data: {}
+  frame_data: {}

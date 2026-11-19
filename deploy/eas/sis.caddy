@@ -1,0 +1,9 @@
+# /etc/caddy/sites/sis.caddy on eas.armikom.com — TLS is obtained automatically once DNS points here.
+sis.eas.armikom.com {
+	import security_headers
+	encode zstd gzip
+	request_body {
+		max_size 2MB
+	}
+	reverse_proxy 127.0.0.1:8101
+}

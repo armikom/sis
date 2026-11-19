@@ -1,5 +1,8 @@
 # SIS production deployment (host `ops`)
 
+> **SIS now runs on eas.armikom.com: see [`eas/README.md`](eas/README.md).** This file describes the alternative
+> setup behind the Cloudflare tunnel on `ops`; its backup, migration and cutover notes still apply.
+
 Stack: `db` (postgres:17, volume `pg_data`, not published) and `app` (built from `../Dockerfile`, volume
 `frame_data` at `/app/data/frames`). The app listens only on `127.0.0.1:${APP_PORT:-8791}`; the host-level Cloudflare
 tunnel (cloudflared) is the only way in. No Caddy, no certificates here. Compose project name is `sis`

@@ -37,4 +37,5 @@ docker compose up -d db                  # PostgreSQL on 127.0.0.1:5433
 ./mvnw -Pno-frontend spring-boot:run     # dev profile
 cd frontend && npm start                 # 4200, /api → 8080 proxy
 ./mvnw verify                            # backend + frontend build + tests
+deploy/eas/deploy.sh                     # production: eas.armikom.com (deploy/eas/README.md), ships committed HEAD
 ```
