@@ -6,10 +6,9 @@ for agents are in `/srv/apps/AGENTS.md` on the server; read them before changing
 | | |
 |---|---|
 | URL | https://sis.armikom.com — Cloudflare Tunnel `eas-armikom` (cloudflared on the host, remotely managed) → `127.0.0.1:8101` |
-| Direct name | https://sis.eas.armikom.com — host Caddy, automatic TLS (needs a DNS-only A record, not created yet) |
 | Server dir | `/srv/apps/sis` (`compose.yml`, `.env`, `src/` = last deployed `git archive`, `backup.sh`, `NOTES.md`) |
 | Compose project | `sis` → containers `sis-db-1`, `sis-app-1`; volumes `sis_pg_data`, `sis_frame_data` |
-| App port | `127.0.0.1:8101` (only Caddy connects) |
+| App port | `127.0.0.1:8101` (only cloudflared connects; the host Caddy has no site for SIS) |
 | Image | `sis-app:<commit>`, `sis-app:current`, `sis-app:previous` — built on the server |
 | Backups | `/srv/backups/sis`, nightly 02:15 (armikom crontab) and before every deploy, 14 days |
 
@@ -31,7 +30,7 @@ From this repository on the Mac (ships the committed `HEAD` only):
 deploy/eas/deploy.sh
 ```
 
-It uploads the source, installs `sis.caddy` if it changed, builds `sis-app:<commit>`, backs up the database,
+It uploads the source, builds `sis-app:<commit>`, backs up the database,
 switches `sis-app:current` and waits for the health check. Flyway applies new migrations on start.
 
 Rollback (database migrations are forward-only, restore the pre-deploy backup if a migration ran):

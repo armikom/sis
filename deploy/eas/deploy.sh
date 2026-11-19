@@ -19,7 +19,7 @@ fi
 
 echo "==> upload source $SHA"
 git archive --format=tar HEAD | ssh "$EAS_HOST" "set -e; mkdir -p $APP_DIR; cd $APP_DIR; rm -rf src.new; mkdir src.new; tar -x -C src.new; rm -rf src; mv src.new src; echo $SHA > src/REVISION"
-scp -q deploy/eas/compose.yml deploy/eas/sis.caddy deploy/backup.sh "$EAS_HOST:$APP_DIR/"
+scp -q deploy/eas/compose.yml deploy/backup.sh "$EAS_HOST:$APP_DIR/"
 
 ssh "$EAS_HOST" SHA="$SHA" APP_DIR="$APP_DIR" bash -s <<'REMOTE'
 set -euo pipefail
@@ -27,13 +27,6 @@ cd "$APP_DIR"
 chmod 700 "$APP_DIR"; chmod +x backup.sh
 [ -f .env ] || { echo ".env missing in $APP_DIR (see README)"; exit 1; }
 chmod 600 .env
-
-echo "==> caddy site"
-if ! sudo cmp -s sis.caddy /etc/caddy/sites/sis.caddy; then
-  sudo install -m 644 sis.caddy /etc/caddy/sites/sis.caddy
-  sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
-  sudo systemctl reload caddy
-fi
 
 echo "==> build sis-app:$SHA"
 docker build --pull -q -t "sis-app:$SHA" src
