@@ -24,7 +24,7 @@ non-internal address. Keep it when changing the proxy setup.
 
 ## Deploy / update
 
-From this repository on the Mac (ships the committed `HEAD` only):
+From a checkout of this repository (github.com/armikom/sis, public) on the Mac; ships the committed `HEAD` only:
 
 ```bash
 deploy/eas/deploy.sh

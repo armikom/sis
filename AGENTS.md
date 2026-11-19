@@ -8,6 +8,12 @@ Read `README.md`, `docs/PROPOSAL.md` (sections 2–3) and `docs/DECISIONS.md` be
 - Run the tests before committing: `./mvnw -Pno-frontend test` (Testcontainers needs Docker) and `cd frontend && npm test -- --watch=false`; `cd frontend && npx ng build` must pass.
 - If a library API differs from the docs (Spring Boot 4.1, Angular 22, zxing-wasm 3.x, NimBLE 2.x), adapt to the installed version without changing behaviour.
 
+## Public repository
+This repository is public (github.com/armikom/sis). Never commit exam questions, answer keys, the question bank, real
+student or staff names/e-mails/numbers, database dumps or secrets. Course-private migration data goes to the
+git-ignored `migration/private/`; `docs/SENG403-soru-bankasi.md` (question bank) must stay uncommitted. Test data uses
+`example.edu` addresses and made-up names. Before committing, check `git diff --cached` for such content.
+
 ## Rules that must not change
 - **Check-in protocol** (`docs/legacy-yoklama/02-PROTOCOL.md`) is normative: token format, HMAC inputs, encodings and test vectors are implemented exactly.
 - No client wall clock (`Date.now()`) in measurements and decisions — only `performance.now()` + measured offset. Server: the `Clock` bean.
