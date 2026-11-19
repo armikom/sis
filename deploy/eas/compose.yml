@@ -55,14 +55,19 @@ services:
         condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      # Traffic arrives through cloudflared (sis.armikom.com) or Caddy (sis.eas.armikom.com), both via the docker
+      # gateway. Cloudflare APPENDS the visitor IP to a client-sent X-Forwarded-For, so the "framework" strategy
+      # (leftmost value) would let clients spoof their IP and dodge rate limits. Tomcat's RemoteIpValve ("native")
+      # takes the rightmost address that is not an internal proxy, i.e. the real visitor.
+      SERVER_FORWARD_HEADERS_STRATEGY: native
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/sis
       SPRING_DATASOURCE_USERNAME: sis
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
       # Signs QR/check-in tokens and decrypts classroom BLE keys. Before migrating yoklama data it must be
       # replaced with the old yoklama value (see NOTES.md); never change it once classrooms exist.
       APP_MASTER_SECRET: ${APP_MASTER_SECRET:?APP_MASTER_SECRET must be set in .env}
-      APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-https://sis.eas.armikom.com}
-      APP_LINK_HOSTS: ${APP_LINK_HOSTS:-sis.eas.armikom.com}
+      APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-https://sis.armikom.com}
+      APP_LINK_HOSTS: ${APP_LINK_HOSTS:-sis.armikom.com,sis.eas.armikom.com}
       APP_ADMIN_USERNAME: ${APP_ADMIN_USERNAME:-admin}
       APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:?APP_ADMIN_PASSWORD must be set in .env}
       APP_FRAMES_DIR: /app/data/frames

@@ -1,4 +1,8 @@
-# /etc/caddy/sites/sis.caddy on eas.armikom.com — TLS is obtained automatically once DNS points here.
+# /etc/caddy/sites/sis.caddy on eas.armikom.com
+#
+# The public name sis.armikom.com does NOT go through Caddy: the host's Cloudflare Tunnel (cloudflared,
+# remotely managed tunnel "eas-armikom") forwards it straight to the app on 127.0.0.1:8101.
+# This block only serves the direct name (needs a DNS-only A record; Caddy obtains TLS itself).
 sis.eas.armikom.com {
 	import security_headers
 	encode zstd gzip

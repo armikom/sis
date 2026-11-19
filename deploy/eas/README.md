@@ -5,7 +5,8 @@ for agents are in `/srv/apps/AGENTS.md` on the server; read them before changing
 
 | | |
 |---|---|
-| URL | https://sis.eas.armikom.com (host Caddy, automatic TLS) |
+| URL | https://sis.armikom.com — Cloudflare Tunnel `eas-armikom` (cloudflared on the host, remotely managed) → `127.0.0.1:8101` |
+| Direct name | https://sis.eas.armikom.com — host Caddy, automatic TLS (needs a DNS-only A record, not created yet) |
 | Server dir | `/srv/apps/sis` (`compose.yml`, `.env`, `src/` = last deployed `git archive`, `backup.sh`, `NOTES.md`) |
 | Compose project | `sis` → containers `sis-db-1`, `sis-app-1`; volumes `sis_pg_data`, `sis_frame_data` |
 | App port | `127.0.0.1:8101` (only Caddy connects) |
@@ -16,6 +17,11 @@ Hardening: both containers `cap_drop: ALL`, `no-new-privileges`, read-only root 
 limits; the database sits on an `internal: true` network (no internet, no published port); the app also joins an
 egress network for SMTP/EWS and OpenRouter. Docker runs with `userns-remap`, so container root is unprivileged on
 the host.
+
+Client IP: compose sets `SERVER_FORWARD_HEADERS_STRATEGY=native`. Cloudflare appends the visitor IP to a
+client-sent `X-Forwarded-For` (`fake, real`); the default `framework` strategy takes the leftmost value, which would
+let anyone spoof their IP and bypass the per-IP rate limits. Tomcat's RemoteIpValve takes the rightmost
+non-internal address. Keep it when changing the proxy setup.
 
 ## Deploy / update
 
@@ -52,4 +58,6 @@ instead of `deploy/`. Two differences on this host:
    `tar` over ssh into `docker compose exec -T app tar -C /app/data/frames -xzf -`); paths stay the same.
 
 Hostnames `yoklama.armikom.com` / `seng403-questions.armikom.com` currently go through Cloudflare tunnels to the
-old hosts. At cutover point them (DNS only) at 51.178.103.153, add them to `sis.caddy` and to `APP_LINK_HOSTS`.
+old hosts (`ops`, `armikom vm question-pool`). At cutover add them to the `eas-armikom` tunnel ingress
+(`http://127.0.0.1:8101`), repoint their CNAMEs to `7deeb3e5-82d9-4e50-ae73-03254071d12f.cfargotunnel.com` and add
+them to `APP_LINK_HOSTS` in `.env`.
