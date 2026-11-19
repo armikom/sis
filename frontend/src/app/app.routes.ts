@@ -49,6 +49,7 @@ export const routes: Routes = [
     children: [
       { path: '', loadComponent: () => import('./teacher/courses.component').then(m => m.CoursesComponent) },
       { path: 'courses/:id', loadComponent: () => import('./teacher/course-detail.component').then(m => m.CourseDetailComponent) },
+      { path: 'courses/:id/students/:personId', loadComponent: () => import('./teacher/course-student.component').then(m => m.CourseStudentComponent) },
       { path: 'courses/:id/learning', loadComponent: () => import('./exam/course-learning.component').then(m => m.CourseLearningComponent) },
       { path: 'exams/new', loadComponent: () => import('./exam/exam-edit.component').then(m => m.ExamEditComponent) },
       { path: 'exams/:id', loadComponent: () => import('./exam/exam-detail.component').then(m => m.ExamDetailComponent) },

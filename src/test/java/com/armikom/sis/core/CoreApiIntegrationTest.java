@@ -771,6 +771,48 @@ class CoreApiIntegrationTest extends ApiTestSupport {
     }
 
     @Test
+    void staffStudentPageShowsProfileAndAttendanceOfOneRosterStudent() throws Exception {
+        User owner = newStaff();
+        CourseRef course = newCourse(owner, false, 2);
+        User s1 = newStudent(course);
+        User s2 = newStudent(course);
+        JsonNode week1 = openSession(owner, course, "Hafta 1");
+        clock.advance(Duration.ofMinutes(1));
+        JsonNode week2 = openSession(owner, course, "Hafta 2");
+        clock.advance(Duration.ofMinutes(1));
+        openSession(owner, course, "Hafta 3");
+        doPost(owner, "/api/sessions/" + week1.get("id").asLong() + "/attendances/manual",
+                Map.of("studentNo", s1.studentNo(), "note", "Elle eklendi")).andExpect(status().isCreated());
+        long att2 = body(doPost(owner, "/api/sessions/" + week2.get("id").asLong() + "/attendances/manual",
+                Map.of("studentNo", s1.studentNo())).andExpect(status().isCreated())).get("id").asLong();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .patch("/api/sessions/" + week2.get("id").asLong() + "/attendances/" + att2).with(owner.as()).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"decision\":\"REJECTED\",\"note\":\"Yoktu\"}"))
+                .andExpect(status().isOk());
+
+        String url = "/api/courses/" + course.id() + "/students/" + s1.id();
+        JsonNode s = body(doGet(owner, url).andExpect(status().isOk()));
+        assertEquals(s1.id(), s.get("personId").asLong());
+        assertEquals(s1.studentNo(), s.get("studentNo").asString());
+        JsonNode att = s.get("attendance");
+        assertEquals(3, att.size());
+        assertEquals("Hafta 1", att.get(0).get("title").asString());
+        assertEquals("PRESENT", att.get(0).get("state").asString());
+        assertEquals("MANUAL", att.get(0).get("source").asString());
+        assertEquals("REJECTED", att.get(1).get("state").asString());
+        assertEquals("Yoktu", att.get(1).get("teacherNote").asString());
+        assertEquals("ABSENT", att.get(2).get("state").asString());
+
+        // Students (even of the same course) and outsiders cannot open it; non-students of the course are 404.
+        doGet(s2, url).andExpect(status().isForbidden());
+        doGet(s1, url).andExpect(status().isForbidden());
+        doGet(newStaff(), url).andExpect(status().isForbidden());
+        doGet(owner, "/api/courses/" + course.id() + "/students/" + owner.id()).andExpect(status().isNotFound());
+        doGet(owner, "/api/courses/" + course.id() + "/students/" + newStudent(newCourse(newStaff(), false, 2)).id())
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void myResultsReturnOnlyMyOwnTotals() throws Exception {
         User owner = newStaff();
         CourseRef course = newCourse(owner, false, 2);

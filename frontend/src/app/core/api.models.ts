@@ -42,6 +42,16 @@ export interface PersonRequest {
   active?: boolean; systemAdmin?: boolean;
 }
 export interface MyAttendanceDto { sessionId: number; title: string; date: string; present: boolean; }
+/** Staff only (GET /api/courses/:id/students/:personId): one session row of a student's attendance. */
+export type StudentAttendanceState = 'PRESENT' | 'PENDING' | 'REJECTED' | 'ABSENT';
+export interface SessionAttendanceDto {
+  sessionId: number; title: string; date: string; sessionStatus: string; state: StudentAttendanceState;
+  source: 'CHECKIN' | 'MANUAL' | null; flags: string[]; teacherNote: string | null; checkedInAt: string | null;
+}
+export interface StaffStudentDto {
+  personId: number; studentNo: string | null; fullName: string; email: string | null; nickname: string;
+  active: boolean; lastLoginAt: string | null; attendance: SessionAttendanceDto[];
+}
 export interface MyResultDto { examId: number; title: string; examDate: string | null; points: number; maxPoints: number; }
 /** A chapter topic as the camelCase endpoints send it (exam questions, my results). Pool endpoints: pool.models.ts. */
 export interface TopicDto {

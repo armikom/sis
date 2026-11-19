@@ -126,8 +126,8 @@ import type { CourseDto, ExamSummaryDto, RosterEntryDto, RosterImportResult, Ses
             <tbody>
               @for (r of filteredRoster(); track r.personId ?? r.studentNo) {
                 <tr>
-                  <td class="text-mono">{{ r.studentNo }}</td>
-                  <td>{{ r.fullName }}</td>
+                  <td class="text-mono">@if (r.personId) { <a [routerLink]="['/t/courses', id(), 'students', r.personId]">{{ r.studentNo }}</a> } @else { {{ r.studentNo }} }</td>
+                  <td>@if (r.personId) { <a [routerLink]="['/t/courses', id(), 'students', r.personId]" [title]="msg.courseStudent.open">{{ r.fullName }}</a> } @else { {{ r.fullName }} }</td>
                   @if (hasEmails()) { <td class="text-sm">{{ r.email }}</td> }
                   <td style="text-align:right"><button class="btn-icon text-danger" (click)="deleteStudent(r)" [attr.aria-label]="r.studentNo + ' öğrencisini sil'">✕</button></td>
                 </tr>
