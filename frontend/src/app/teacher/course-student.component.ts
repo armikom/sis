@@ -174,7 +174,7 @@ type Tab = 'attendance' | 'exams' | 'pool';
                         @for (q of l.missedQuestions; track q.examId + '-' + q.position) {
                           <tr>
                             <td>{{ q.examTitle }}</td>
-                            <td class="num">{{ q.position }}</td>
+                            <td class="num">{{ q.label ?? q.position }}</td>
                             <td>{{ q.topic ?? '—' }}</td>
                             <td class="qtext">{{ q.text ?? '—' }}</td>
                             <td>{{ q.answer || msg.myResult.blank }}</td>

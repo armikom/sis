@@ -14,9 +14,12 @@ Bu doküman bu özellik için normatiftir (alan adları, uç noktalar, puanlama 
   | `CHOICE` | Seçenekli | harf (`A`..), boş bırakılabilir | otomatik: doğruysa `maxPoints`, değilse 0 |
   | `OPEN` | Açık uçlu | cevap metni (isteğe bağlı) + puan | elle, `0..maxPoints` |
   | `FREE` | Serbest | yalnızca puan | elle, `0..maxPoints` |
-- `CHOICE` için `choiceCount` 2..6 (harfler `A`..`F`), `correctChoice` isteğe bağlıdır (cevap anahtarı sonradan girilebilir; anahtar yokken puan `null`).
+- `CHOICE` için seçenekler bir **etiket kümesidir** (`choiceLabels`, V4): her seçenek tek karakter, 2..10 tane, birbirinden farklı, `A`-`Z` ya da `0`-`9` (`"ABCD"`, `"DY"`, `"TF"`, `"10"`). `choiceCount` = etiket sayısı (istekte `choiceLabels` yoksa `choiceCount` ile `A`.. üretilir). `correctChoice` isteğe bağlıdır ve etiketlerden biri olmalıdır (cevap anahtarı sonradan girilebilir; anahtar yokken puan `null`).
+- **Soru grubu (`exam_question_group`, V4)**: ortak kökü olan alt sorular (5a, 5b…). Puanlama, cevap, konu ve analiz alt soruda (`exam_question`) kalır; grup yalnızca sunumdur (`text`, `html`). Bir grubun soruları giriş sırasında **ardışık** olmalıdır; sorusu kalmayan grup kaydetmede silinir.
+- **Numaralandırma**: `position` giriş sırasıdır (1..n; klavye akışı ve dışa aktarım anahtarları buna dayanır). Kağıttaki numara `label`'dır: gruplu olmayan soru ve her grup birer numara alır — Q1, Q2, grup(Q3, Q4), Q5 → `1, 2, 3a, 3b, 4`. Alt etiket `subLabel` (≤ 8), boşsa sırayla a, b, c…
+- **Zengin içerik**: soru ve grupta `html` (≤ 500 000 karakter; yapıştırılan resimler data URI olarak kalır). Öğretim üyesi yazar, öğrenci görür: editörden çıkarken ve her gösterimde DOMPurify ile temizlenir; varsa ekranda `text` yerine gösterilir.
 - **Sonuç (`exam_result`)**: sınav × öğrenci numarası başına tek kayıt; `fullName` kayıt anında roster'dan kopyalanır (roster'da yoksa istekteki `fullName`, o da yoksa boş).
-- **Cevap (`exam_answer`)**: sonuç × soru başına tek kayıt; `answerText` (CHOICE'ta harf, boş bırakıldıysa `null`), `points` (`null` = henüz puanlanmadı).
+- **Cevap (`exam_answer`)**: sonuç × soru başına tek kayıt; `answerText` (CHOICE'ta etiket karakteri, boş bırakıldıysa `null`), `points` (`null` = henüz puanlanmadı).
 - Puanlar `numeric(7,2)`; JSON'da sayı. Adım kısıtı yok (0,25 gibi değerler geçerli).
 - Öğrenci numarası `app.checkin.student-no-pattern` ile doğrulanır. Roster'da olmayan öğrenciye de sonuç girilebilir.
 
@@ -67,6 +70,8 @@ create table exam_answer (
 create index ix_exam_answer_question on exam_answer(question_id);
 ```
 
+V4 (`V4__question_groups.sql`): `exam_question_group(id, exam_id, position, text, html)`; `exam_question` + `group_id` (FK, `on delete set null`), `sub_label varchar(8)`, `html text`, `choice_labels varchar(16)` (mevcut CHOICE satırları `choice_count`'tan dolduruldu).
+
 `position` için DB'de unique kısıt yoktur (yeniden sıralama sırasında geçici çakışmayı önlemek için); servis 1..n olarak yeniden numaralar. Sınavı olan ders silinemez (`CONFLICT`, oturumlarla aynı kural). Zaman damgaları `Clock` bean'inden.
 
 ## 3. API (kimlik doğrulamalı, CSRF'li; hata gövdesi 04 §1 ile aynı)
@@ -75,13 +80,17 @@ create index ix_exam_answer_question on exam_answer(question_id);
 
 ```jsonc
 // QuestionDto
-{ "id": 12, "position": 1, "type": "CHOICE", "text": null, "topic": "Türev",
-  "maxPoints": 4, "choiceCount": 4, "correctChoice": "B" }
+{ "id": 12, "position": 3, "label": "3a", "type": "CHOICE", "text": null, "html": "<p>…</p>", "topic": "Türev",
+  "maxPoints": 4, "choiceCount": 2, "choiceLabels": "DY", "correctChoice": "D",
+  "groupId": 7, "subLabel": null, "topicIds": [], "topics": [], "explanation": null, "options": [] }
+
+// GroupDto
+{ "id": 7, "position": 3, "label": "3", "text": "Aşağıdaki ifadeler için", "html": null, "questionIds": [12, 13] }
 
 // ExamDto
 { "id": 3, "courseId": 1, "courseCode": "MAT101", "courseName": "Matematik I",
   "title": "Vize", "examDate": "2026-11-20", "totalPoints": 100,
-  "resultCount": 18, "createdAt": "…", "questions": [QuestionDto] }
+  "resultCount": 18, "createdAt": "…", "questions": [QuestionDto], "groups": [GroupDto] }
 
 // ExamSummaryDto (liste)
 { "id": 3, "courseId": 1, "title": "Vize", "examDate": "2026-11-20",
@@ -90,8 +99,10 @@ create index ix_exam_answer_question on exam_answer(question_id);
 
 // ExamRequest (POST/PUT)
 { "title": "Vize", "examDate": "2026-11-20",
+  "groups": [ { "id": 7, "ref": "g7", "text": "Ortak kök", "html": null } ],     // id null = yeni; ref istek içinde tekil
   "questions": [ { "id": 12, "type": "CHOICE", "text": null, "topic": "Türev",
-                   "maxPoints": 4, "choiceCount": 4, "correctChoice": "B" } ] }
+                   "maxPoints": 4, "choiceLabels": "DY", "correctChoice": "D",
+                   "groupRef": "g7", "subLabel": null, "html": null } ] }        // html: null = değişmez, "" = temizle
 
 // ExamResultDto
 { "id": 7, "studentNo": "20210001", "fullName": "Ali Veli", "note": null,
@@ -130,12 +141,13 @@ create index ix_exam_answer_question on exam_answer(question_id);
 
 **Sınav kaydetme (`PUT /api/exams/{id}`)** — soru listesi tam listedir:
 - `id`'si olan soru güncellenir (başka sınava aitse `VALIDATION_ERROR`), `id`'siz soru eklenir, listede olmayan mevcut sorular cevaplarıyla birlikte silinir. `position` dizi sırasından (1..n) atanır.
-- Doğrulama: `title` dolu, ≤200; soru sayısı 0..200; `maxPoints` > 0 ve ≤ 1000; `CHOICE` için `choiceCount` 2..6 zorunlu, `correctChoice` verilmişse `A`..(choiceCount'uncu harf) aralığında (büyük harfe çevrilir); `OPEN`/`FREE` için `choiceCount` ve `correctChoice` `null` yapılır. `text` ≤2000, `topic` ≤120; boş/boşluk değerler `null`'a çevrilir, `topic` kırpılır.
-- Bir `CHOICE` sorusunun `correctChoice`, `maxPoints` ya da `choiceCount` değeri değişirse o sorunun bütün cevapları yeniden puanlanır (choiceCount küçüldüyse aralık dışı kalan cevap harfi korunur, 0 puan alır). `OPEN`/`FREE` sorusunda `maxPoints` düşerse mevcut puanlar yeni üst sınıra kırpılır. Soru türü değişirse o sorunun cevapları silinir.
+- Doğrulama: `title` dolu, ≤200; soru sayısı 0..200; `maxPoints` > 0 ve ≤ 1000; `CHOICE` için `choiceLabels` (boşluk, `,` `/` `|` ayırıcıları atılır, büyük harfe çevrilir; 2..10 farklı karakter) ya da `choiceCount` 2..10 zorunlu, `correctChoice` verilmişse etiketlerden biri (büyük harfe çevrilir); `OPEN`/`FREE` için `choiceLabels`, `choiceCount` ve `correctChoice` `null` yapılır. `text` ≤20 000, `html` ≤500 000, `topic` ≤120; boş/boşluk değerler `null`'a çevrilir, `topic` kırpılır.
+- Gruplar: `groups[].ref` zorunlu ve tekil (≤40), `id` bu sınava ait olmalı; `questions[].groupRef` istekteki bir grubu göstermeli, aynı grubun soruları ardışık olmalı, `subLabel` ≤8 ve grup içinde tekil (hepsi `VALIDATION_ERROR`). Hiçbir sorunun göstermediği grup silinir; grup `position`'ı kayıt sırasında numaralamadan yazılır.
+- Bir `CHOICE` sorusunun `correctChoice`, `maxPoints` ya da `choiceLabels` değeri değişirse o sorunun bütün cevapları yeniden puanlanır (etiket kümesi küçüldüyse küme dışı kalan cevap karakteri korunur, 0 puan alır). `OPEN`/`FREE` sorusunda `maxPoints` düşerse mevcut puanlar yeni üst sınıra kırpılır. Soru türü değişirse o sorunun cevapları silinir.
 
 **Sonuç kaydetme (`PUT …/results/{studentNo}`)** — cevap listesi o öğrencinin tam cevap kümesidir (listede olmayan soruların mevcut cevapları silinir):
 - `questionId` bu sınava ait olmalı ve listede tekrar etmemeli; aksi `VALIDATION_ERROR`.
-- `CHOICE`: `answer` `null`/boş → boş bırakılmış (satır `answerText=null` ile **saklanır**); aksi halde tek harf, büyük harfe çevrilir, aralık dışıysa `VALIDATION_ERROR`. İstekteki `points` yok sayılır; puan: anahtar yoksa `null`, anahtar varsa doğru → `maxPoints`, yanlış/boş → 0.
+- `CHOICE`: `answer` `null`/boş → boş bırakılmış (satır `answerText=null` ile **saklanır**); aksi halde tek karakter, büyük harfe çevrilir, sorunun etiketlerinden biri değilse `VALIDATION_ERROR`. İstekteki `points` yok sayılır; puan: anahtar yoksa `null`, anahtar varsa doğru → `maxPoints`, yanlış/boş → 0.
 - `OPEN`: `answer` (≤2000, isteğe bağlı) ve `points` (isteğe bağlı, `0..maxPoints`, aksi `VALIDATION_ERROR`). İkisi de boşsa satır saklanmaz.
 - `FREE`: `answer` yok sayılır; `points` `null` ise satır saklanmaz.
 - `studentNo` desene uymuyorsa `VALIDATION_ERROR`. `updatedAt` her kayıtta güncellenir.
@@ -150,7 +162,7 @@ Tanımlar: bir cevap **puanlanmış** = `points != null`. Başarı oranı = kaza
   "average": 61.5, "median": 64, "min": 20, "max": 96,          // sonuç yoksa null
   "questions": [ { "questionId": 12, "position": 1, "type": "CHOICE", "topic": "Türev",
                    "maxPoints": 4, "gradedCount": 18, "averagePoints": 2.9, "successRate": 0.72,
-                   "choiceCounts": { "A": 2, "B": 13, "C": 1, "D": 1, "": 1 } } ],   // CHOICE değilse null; "" = boş
+                   "label": "1", "choiceCounts": { "A": 2, "B": 13, "C": 1, "D": 1, "": 1 } } ],   // CHOICE değilse null; anahtarlar etiketler, "" = boş
   "topics": [ { "topic": "Türev", "questionCount": 6, "maxPoints": 24, "successRate": 0.58,
                 "weakStudentCount": 5 } ],                       // successRate artan sırada
   "students": [ { "studentNo": "20210001", "fullName": "Ali Veli", "totalPoints": 64,
@@ -182,7 +194,7 @@ Tanımlar: bir cevap **puanlanmış** = `points != null`. Başarı oranı = kaza
 
 ### 3.5 CSV
 
-Başlık: `OgrenciNo;AdSoyad;S1;S1 Puan;S2;S2 Puan;…;Toplam`. `S{n}` sütunu cevabı (CHOICE harfi / OPEN metni / FREE boş), `S{n} Puan` puanı içerir. Ondalık ayırıcı virgül.
+Başlık: `OgrenciNo;AdSoyad;S1;S1 Puan;S2;S2 Puan;…;Toplam`. `n` kağıttaki numaradır (`label`: gruplu sorularda `S3a`). `S{n}` sütunu cevabı (CHOICE etiketi / OPEN metni / FREE boş), `S{n} Puan` puanı içerir. Ondalık ayırıcı virgül.
 
 ## 4. Arayüz (Angular)
 
@@ -194,21 +206,25 @@ Dosyalar `frontend/src/app/exam/` altında. Rotalar (öğretim üyesi kabuğunun
 | `/t/exams/:id/edit` | `ExamEditComponent` | sınav tanımını düzenle |
 | `/t/exams/:id` | `ExamDetailComponent` | sonuç listesi + analiz sekmeleri |
 | `/t/exams/:id/entry` (`?student=`) | `ExamEntryComponent` | cevap formu (hızlı giriş aracı) |
+| `/t/exams/:id/sheets` (`?student=`) | `ExamSheetsComponent` | öğrenci başına yazdırılabilir sınav dökümü (§4.5) |
 | `/t/courses/:id/learning` (`?student=`) | `CourseLearningComponent` | ders geneli öğrenme durumu + öğrenci detayı |
 
 Ders detayına (`CourseDetailComponent`) "Sınavlar" bölümü eklenir: sınav kartları, "Yeni sınav", "Öğrenme durumu" bağlantısı.
 
 ### 4.1 Sınav düzenleyici
-- Başlık, tarih, soru tablosu (tür, konu, puan, seçenek sayısı, doğru cevap, metin), satır ekle/sil/yukarı-aşağı taşı.
-- **Toplu ekle**: "N adet, tür, seçenek sayısı, soru başı puan, konu" ile satır üretir (örn. 25 × 4 seçenekli × 4 puan).
-- **Cevap anahtarı**: seçenekli sorular için sırayla tek satırda harf dizisi (`ABCDA…`) yapıştır/yaz; boşluk ve ayırıcılar atlanır.
+- Başlık, tarih, soru tablosu (grup, tür, konu, puan, seçenekler, doğru cevap, içerik), satır ekle/sil/yukarı-aşağı taşı. Satır numarası kağıttaki etikettir (`1, 2, 3a, 3b…`).
+- **Seçenekler**: hazır kümeler (A–D, A–E, A–C, A–B, A–F, D/Y, T/F, 1/0, E/H) ya da "Özel" (serbest etiket dizisi, örn. `ABCDEFGH`). Küme değişince kümede olmayan doğru cevap temizlenir.
+- **Gruplar**: "Grup" sütunu ile satır bir gruba alınır ("+ Yeni grup") ya da "+ Soru grubu ekle" iki alt sorulu yeni grup açar; grup başlığı satırında ortak kök (düz metin + HTML editörü), "+ Alt soru", "Grubu dağıt" (alt sorular bağımsız olur, cevaplar silinmez). Ardışık olmayan grup uyarılır ve "Bir araya getir" ile toplanır. Alt etiket kutusu (boş = a, b, c…).
+- **İçerik**: soru metni (düz), zengin içerik (HTML editörü: yapıştırma biçim ve resimleri korur, kaynak görünümü, resim ekle ≤ 400 KB), seçenek metinleri/açıklamaları, cevap açıklaması.
+- **Toplu ekle**: "N adet, tür, seçenekler, soru başı puan, konu" ile satır üretir (örn. 25 × A–D × 4 puan).
+- **Cevap anahtarı**: seçenekli sorular için sırayla tek satırda etiket dizisi (`ABCDA…`, `DYYD`, `1011`) yapıştır/yaz; boşluk ve noktalama atlanır; sorunun etiketlerinden olmayan karakter o soruyu boş bırakır ve bildirilir.
 - Sonucu olan sınavda soru silme / tür değiştirme, kaydetmeden önce onay ister.
 
 ### 4.2 Cevap formu (hızlı giriş)
 - Solda öğrenci listesi (roster + sonucu olanlar; arama; girilmiş/eksik rozeti), ayrıca roster dışı numara girişi.
 - Seçenekli sorular optik form gibi baloncuk ızgarası; bir soru **aktif**tir.
 - Klavye (odak form üzerindeyken, bir metin/puan alanında değilken):
-  - `A`..`F` (choiceCount içinde): aktif soruya cevabı yazar, sonraki soruya geçer.
+  - Sorunun etiketlerinden biri (`A`..`F`, `D`/`Y`, `1`/`0`…): aktif soruya cevabı yazar, sonraki soruya geçer; etiket dışı harf/rakam kısa bir uyarıyla reddedilir. Gruplu sorular grup başlığının (numara + kök özeti) altında `3a`, `3b` olarak listelenir.
   - `Boşluk` veya `-`: soruyu boş bırakır ve ilerler.
   - `Backspace`: önceki soruya döner ve cevabını temizler. `←/↑` önceki, `→/↓/Tab` sonraki soru.
   - `Enter` (son sorudayken ya da `Ctrl/⌘+Enter` her yerde): kaydeder.
@@ -218,8 +234,14 @@ Ders detayına (`CourseDetailComponent`) "Sınavlar" bölümü eklenir: sınav k
 - Kaydedilmemiş değişiklik varken öğrenci değiştirmek onay ister. Kaydedilmemiş cevaplar tarayıcıda (localStorage) ve sunucuda (`…/drafts`) taslak olarak tutulur; sayfa yenilenir, kapanır ya da başka sayfaya geçilirse öğrenci yeniden açıldığında geri yüklenir (listede "Taslak" rozeti, "Taslağı at" ile vazgeçilir). Kaydedince ve onaylı vazgeçişte silinir; çıkış yapınca yalnızca tarayıcıdaki kopya silinir, sunucudaki başka bir tarayıcıda yeniden açılır.
 
 ### 4.3 Sınav detayı ve analiz
-- **Sonuçlar** sekmesi: roster + sonucu olan öğrenciler; toplam, yüzde, durum (Girilmedi / Eksik / Tamam), satırdan cevap formuna geçiş, sonucu silme, CSV indirme.
+- **Sonuçlar** sekmesi: roster + sonucu olan öğrenciler; toplam, yüzde, durum (Girilmedi / Eksik / Tamam), satırdan cevap formuna ve öğrencinin dökümüne geçiş, sonucu silme, CSV indirme.
+- **Sorular** sekmesi: grup başlıkları (kök, HTML) ve alt sorular girintili; soru etiketi, seçenek kümesi, anahtar, içerik (HTML varsa o).
 - **Analiz** sekmesi: özet (ortalama, ortanca, en düşük/yüksek), soru tablosu (başarı oranı çubuğu, seçenek dağılımı — doğru cevap vurgulu), konu tablosu (başarı artan; zayıf öğrenci sayısı), öğrenci listesi (zayıf konular).
+
+### 4.5 Öğrenci dökümü (yazdırılabilir)
+- `/t/exams/:id/sheets[?student=]`: sonucu olan her öğrenci için bir sayfa (yazdırmada sayfa sonu): ders, sınav, tarih; numara, ad, form; toplam / yüzde / doğru-yanlış-boş. Sırayla grup kökleri ve sorular: etiket, içerik (HTML ya da metin), seçenekler (doğru ✓, verilen ●), "Verilen cevap / Doğru cevap", durum rozeti (Doğru / Yanlış / Kısmi / Boş / Puanlanmadı), puan; `OPEN` cevabı metin olarak.
+- Denetimler: öğrenci seçimi (tümü / biri), seçenek metinleri, cevap açıklamaları, yalnızca yanlış/boş; "Yazdır / PDF" (`window.print`). Veri mevcut uç noktalardan gelir (`GET /api/exams/{id}`, `/results`, roster); yeni API yok.
+- Öğrencinin kendi sayfası (`/courses/:id/results/:examId`) aynı içeriği (grup kökü, HTML, etiketler) gösterir ve "Yazdır / PDF" düğmesi vardır; sınıf çubukları ve denetimler yazdırmada gizlenir.
 
 ### 4.4 Öğrenme durumu (ders)
 - Konu listesi (başarı artan) — her konu açıldığında o konuda zayıf öğrenciler: toplu takviye planı için. Numara listesini kopyalama.

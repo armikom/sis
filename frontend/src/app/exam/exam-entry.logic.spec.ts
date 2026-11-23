@@ -65,6 +65,8 @@ describe('sheet construction', () => {
     expect(sortQuestions([choice(2, 2), choice(1, 1)]).map(q => q.id)).toEqual([1, 2]);
     expect(lettersFor(choice(1, 1, 5))).toEqual(['A', 'B', 'C', 'D', 'E']);
     expect(lettersFor(choice(1, 1, 6))).toHaveLength(6);
+    expect(lettersFor({ ...choice(1, 1, 2), choiceLabels: 'DY' })).toEqual(['D', 'Y']);
+    expect(lettersFor({ ...choice(1, 1, 2), choiceLabels: '10' })).toEqual(['1', '0']);
   });
 
   it('pre-fills from a result, distinguishing blanks from missing answers', () => {
@@ -197,8 +199,18 @@ describe('keyboard reducer', () => {
     expect(press(qs, s, 'a', { metaKey: true }).handled).toBe(false);
     expect(press(qs, s, 'a', { altKey: true }).handled).toBe(false);
     expect(press(qs, s, 'F5').handled).toBe(false);
-    expect(press(qs, s, '1').handled).toBe(false);
     expect(press([], s, 'a').handled).toBe(false);
+  });
+
+  it('digits are labels too: rejected on an A–D question, entered on a 1/0 question', () => {
+    const s = emptySheet(3);
+    expect(press(qs, s, '1')).toEqual({ handled: true, sheet: s, rejected: 0 });
+    const binary = [{ ...choice(1, 1, 2, '1'), choiceLabels: '10' }, choice(2, 2)];
+    const o = press(binary, emptySheet(2), '0');
+    expect(o.handled && o.sheet.cells[0]).toEqual({ entered: true, answer: '0', points: '', text: '' });
+    expect(o.handled && o.sheet.active).toBe(1);
+    const y = press([{ ...choice(1, 1, 2, 'D'), choiceLabels: 'DY' }], emptySheet(1), 'y');
+    expect(y.handled && y.sheet.cells[0].answer).toBe('Y');
   });
 
   it('letters are not handled on OPEN/FREE questions; navigation still is', () => {

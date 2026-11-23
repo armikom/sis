@@ -49,11 +49,13 @@ public class ExamAnalysisService {
 
         Map<Long, Tally> questionTally = new HashMap<>();
         Map<Long, Map<String, Integer>> choiceCounts = new HashMap<>();
+        Map<Long, String> labels = ExamLabels.labels(questions);
         for (ExamQuestion q : questions) {
             questionTally.put(q.getId(), new Tally());
-            if (q.getType() == QuestionType.CHOICE) {
+            String opts = q.labels();
+            if (opts != null) {
                 Map<String, Integer> counts = new LinkedHashMap<>();
-                for (int i = 1; i <= q.getChoiceCount(); i++) counts.put(ExamMath.letter(i), 0);
+                for (char c : opts.toCharArray()) counts.put(String.valueOf(c), 0);
                 choiceCounts.put(q.getId(), counts);
             }
         }
@@ -95,7 +97,7 @@ public class ExamAnalysisService {
                 Integer blanks = counts.remove("");
                 counts.put("", blanks == null ? 0 : blanks);
             }
-            questionDtos.add(new QuestionAnalysisDto(q.getId(), q.getPosition(), q.getType(), q.getTopic(),
+            questionDtos.add(new QuestionAnalysisDto(q.getId(), q.getPosition(), labels.get(q.getId()), q.getType(), q.getTopic(),
                     ExamMath.normalize(q.getMaxPoints()), t.count(), ExamMath.mean(t.earned(), t.count()),
                     t.rate(), counts));
         }
@@ -230,6 +232,7 @@ public class ExamAnalysisService {
             if (r == null) continue;
             if (latest == null || r.getUpdatedAt().isAfter(latest.getUpdatedAt())) latest = r;
             List<ExamQuestion> questions = data.questions(exam);
+            Map<Long, String> labels = ExamLabels.labels(questions);
             Map<Long, ExamAnswer> byQuestion = data.answers(r).stream()
                     .collect(Collectors.toMap(a -> a.getQuestion().getId(), Function.identity()));
             BigDecimal total = ExamQueries.resultTotal(byQuestion.values());
@@ -243,8 +246,8 @@ public class ExamAnalysisService {
                     perTopic.computeIfAbsent(q.getTopic(), x -> new Tally()).add(a.getPoints(), q.getMaxPoints());
                 }
                 if (a.getPoints().multiply(BigDecimal.TWO).compareTo(q.getMaxPoints()) < 0) {
-                    missed.add(new MissedQuestionDto(exam.getId(), exam.getTitle(), q.getPosition(), q.getTopic(),
-                            q.getText(), a.getAnswerText(),
+                    missed.add(new MissedQuestionDto(exam.getId(), exam.getTitle(), q.getPosition(),
+                            labels.get(q.getId()), q.getTopic(), q.getText(), a.getAnswerText(),
                             q.getType() == QuestionType.CHOICE ? q.getCorrectChoice() : null,
                             ExamMath.normalize(a.getPoints()), ExamMath.normalize(q.getMaxPoints())));
                 }

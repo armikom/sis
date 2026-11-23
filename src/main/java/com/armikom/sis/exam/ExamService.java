@@ -31,6 +31,9 @@ public class ExamService {
     static final BigDecimal MAX_QUESTION_POINTS = new BigDecimal("1000");
     static final int MAX_TEXT = 20_000;
     static final int MAX_OPTION_TEXT = 5_000;
+    /** Rich (HTML) content of a question or group; pasted content with inline images needs room. */
+    static final int MAX_HTML = 500_000;
+    static final int MAX_GROUPS = 200;
 
     private final ExamRepository examRepo;
     private final ExamQuestionRepository questionRepo;
@@ -43,13 +46,15 @@ public class ExamService {
     private final Topics topics;
     private final ExamOptions options;
     private final ExamDraftService drafts;
+    private final ExamQuestionGroupRepository groupRepo;
     private final Pattern studentNoPattern;
 
     public ExamService(ExamRepository examRepo, ExamQuestionRepository questionRepo, ExamResultRepository resultRepo,
                        ExamAnswerRepository answerRepo, EnrollmentRepository enrollmentRepo, CourseAccess access,
                        ExamQueries queries, Clock clock, AppProperties props, Topics topics,
-                       ExamOptions options, ExamDraftService drafts) {
+                       ExamOptions options, ExamDraftService drafts, ExamQuestionGroupRepository groupRepo) {
         this.drafts = drafts;
+        this.groupRepo = groupRepo;
         this.topics = topics;
         this.options = options;
         this.examRepo = examRepo;
@@ -81,19 +86,23 @@ public class ExamService {
     @Transactional
     public ExamDto create(long courseId, ExamRequest req) {
         Course course = access.requireStaff(courseId);
-        ValidExam valid = validate(req, Set.of(), courseId);
+        ValidExam valid = validate(req, Set.of(), Set.of(), courseId);
         Exam exam = new Exam(course, valid.title(), valid.examDate(), clock.instant());
         if (valid.forms() != null) exam.setForms(valid.forms());
         exam.setSeed(req.seed());
         exam = examRepo.save(exam);
+        Map<String, Long> groupIds = saveGroups(exam, valid.groups(), List.of());
         int position = 1;
+        List<ExamQuestion> saved = new ArrayList<>();
         for (QuestionSpec spec : valid.questions()) {
             ExamQuestion q = new ExamQuestion(exam);
-            spec.applyTo(q, position++);
+            spec.applyTo(q, position++, groupIds);
             q = questionRepo.save(q);
+            saved.add(q);
             if (spec.topicIds() != null) topics.setExamQuestionTopics(q.getId(), spec.topicIds());
             if (spec.options() != null) options.replace(q.getId(), spec.options());
         }
+        numberGroups(exam.getId(), saved);
         return toDto(exam);
     }
 
@@ -102,7 +111,10 @@ public class ExamService {
         Exam exam = queries.requireExam(id);
         Map<Long, ExamQuestion> existing = questionRepo.findByExamId(id).stream()
                 .collect(Collectors.toMap(ExamQuestion::getId, Function.identity()));
-        ValidExam valid = validate(req, existing.keySet(), exam.getCourse().getId());
+        List<ExamQuestionGroup> existingGroups = groupRepo.findByExamId(id);
+        ValidExam valid = validate(req, existing.keySet(),
+                existingGroups.stream().map(ExamQuestionGroup::getId).collect(Collectors.toSet()),
+                exam.getCourse().getId());
 
         Set<Long> kept = valid.questions().stream().map(QuestionSpec::id).filter(Objects::nonNull)
                 .collect(Collectors.toSet());
@@ -121,7 +133,7 @@ public class ExamService {
             } else if (spec.type() == QuestionType.CHOICE) {
                 if (!Objects.equals(q.getCorrectChoice(), spec.correctChoice())
                         || q.getMaxPoints().compareTo(spec.maxPoints()) != 0
-                        || !Objects.equals(q.getChoiceCount(), spec.choiceCount())) {
+                        || !Objects.equals(q.labels(), spec.choiceLabels())) {
                     rescoreChoice.add(q.getId());
                 }
             } else if (spec.maxPoints().compareTo(q.getMaxPoints()) < 0) {
@@ -135,14 +147,18 @@ public class ExamService {
         exam.setExamDate(valid.examDate());
         if (valid.forms() != null) exam.setForms(valid.forms());
         if (req.seed() != null) exam.setSeed(req.seed());
+        Map<String, Long> groupIds = saveGroups(exam, valid.groups(), existingGroups);
         int position = 1;
+        List<ExamQuestion> saved = new ArrayList<>();
         for (QuestionSpec spec : valid.questions()) {
             ExamQuestion q = spec.id() != null ? existing.get(spec.id()) : new ExamQuestion(exam);
-            spec.applyTo(q, position++);
+            spec.applyTo(q, position++, groupIds);
             if (spec.id() == null) q = questionRepo.save(q);
+            saved.add(q);
             if (spec.topicIds() != null) topics.setExamQuestionTopics(q.getId(), spec.topicIds());
             if (spec.options() != null) options.replace(q.getId(), spec.options());
         }
+        numberGroups(id, saved);
 
         Set<Long> touched = new HashSet<>(rescoreChoice);
         touched.addAll(clipPoints);
@@ -171,15 +187,68 @@ public class ExamService {
         Map<Long, List<Long>> explicit = topics.explicitOfExamQuestions(ids);
         Map<Long, List<Topics.Ref>> effective = topics.effectiveOfExamQuestions(ids);
         Map<Long, List<OptionDto>> opts = options.of(ids);
+        Map<Long, String> labels = ExamLabels.labels(questions);
         Course c = exam.getCourse();
         return new ExamDto(exam.getId(), c.getId(), c.getCode(), c.getName(), exam.getTitle(), exam.getExamDate(),
                 exam.getForms(), exam.getSeed(), ExamQueries.examTotal(questions), resultRepo.countByExam_Id(exam.getId()),
                 exam.getCreatedAt().toString(), exam.isPublished(),
-                questions.stream().map(q -> new QuestionDto(q.getId(), q.getPosition(), q.getType(), q.getText(),
-                        q.getTopic(), ExamMath.normalize(q.getMaxPoints()), q.getChoiceCount(), q.getCorrectChoice(),
+                questions.stream().map(q -> new QuestionDto(q.getId(), q.getPosition(), labels.get(q.getId()),
+                        q.getType(), q.getText(), q.getHtml(), q.getTopic(), ExamMath.normalize(q.getMaxPoints()),
+                        q.labels() == null ? null : q.labels().length(), q.labels(), q.getCorrectChoice(),
                         q.getPoolQuestionId(), explicit.getOrDefault(q.getId(), List.of()),
                         topicDtos(effective.get(q.getId())), q.getExplanation(),
-                        opts.getOrDefault(q.getId(), List.of()))).toList());
+                        opts.getOrDefault(q.getId(), List.of()), q.getGroupId(), q.getSubLabel())).toList(),
+                groupDtos(groupRepo.findByExamId(exam.getId()), questions));
+    }
+
+    /** Groups in printed order with their number and member question ids (questions in position order). */
+    static List<GroupDto> groupDtos(List<ExamQuestionGroup> groups, List<ExamQuestion> questions) {
+        Map<Long, Integer> numbers = ExamLabels.groupNumbers(questions);
+        Map<Long, List<Long>> members = new LinkedHashMap<>();
+        for (ExamQuestion q : questions) {
+            if (q.getGroupId() != null) members.computeIfAbsent(q.getGroupId(), k -> new ArrayList<>()).add(q.getId());
+        }
+        return groups.stream()
+                .sorted(Comparator.comparingInt((ExamQuestionGroup g) -> numbers.getOrDefault(g.getId(), Integer.MAX_VALUE))
+                        .thenComparing(ExamQuestionGroup::getId))
+                .map(g -> {
+                    int number = numbers.getOrDefault(g.getId(), g.getPosition());
+                    return new GroupDto(g.getId(), number, String.valueOf(number), g.getText(), g.getHtml(),
+                            members.getOrDefault(g.getId(), List.of()));
+                }).toList();
+    }
+
+    /**
+     * Writes the request's groups: existing ones (by id) are updated, new ones created, the rest of the exam's groups
+     * deleted (member questions are re-pointed in the same save; the FK also clears them). Returns ref → id.
+     */
+    private Map<String, Long> saveGroups(Exam exam, List<GroupSpec> specs, List<ExamQuestionGroup> existing) {
+        Map<Long, ExamQuestionGroup> byId = existing.stream()
+                .collect(Collectors.toMap(ExamQuestionGroup::getId, Function.identity()));
+        Map<String, Long> ids = new LinkedHashMap<>();
+        Set<Long> kept = new HashSet<>();
+        for (GroupSpec spec : specs) {
+            ExamQuestionGroup g = spec.id() != null ? byId.get(spec.id()) : new ExamQuestionGroup(exam);
+            g.setText(spec.text());
+            g.setHtml(spec.html());
+            if (spec.id() == null) {
+                g.setPosition(0);
+                g = groupRepo.save(g);
+            }
+            kept.add(g.getId());
+            ids.put(spec.ref(), g.getId());
+        }
+        List<ExamQuestionGroup> removed = existing.stream().filter(g -> !kept.contains(g.getId())).toList();
+        if (!removed.isEmpty()) groupRepo.deleteAll(removed);
+        return ids;
+    }
+
+    /** Stores each group's printed number, derived from the saved question order. */
+    private void numberGroups(long examId, List<ExamQuestion> ordered) {
+        Map<Long, Integer> numbers = ExamLabels.groupNumbers(ordered);
+        for (ExamQuestionGroup g : groupRepo.findByExamId(examId)) {
+            g.setPosition(numbers.getOrDefault(g.getId(), 0));
+        }
     }
 
     static TopicDto topicDto(Topics.Ref t) {
@@ -201,25 +270,37 @@ public class ExamService {
 
     // ---- definition validation -----------------------------------------------------------------
 
-    private record ValidExam(String title, LocalDate examDate, List<QuestionSpec> questions, Integer forms) {}
+    private record ValidExam(String title, LocalDate examDate, List<QuestionSpec> questions, Integer forms,
+                             List<GroupSpec> groups) {}
+
+    private record GroupSpec(Long id, String ref, String text, String html) {}
 
     private record QuestionSpec(Long id, QuestionType type, String text, String topic, BigDecimal maxPoints,
-                                Integer choiceCount, String correctChoice, Long poolQuestionId, List<Long> topicIds,
-                                String explanation, List<OptionDto> options) {
-        void applyTo(ExamQuestion q, int position) {
+                                String choiceLabels, String correctChoice, Long poolQuestionId, List<Long> topicIds,
+                                String explanation, List<OptionDto> options, String groupRef, String subLabel,
+                                String html) {
+        void applyTo(ExamQuestion q, int position, Map<String, Long> groupIds) {
             q.setPosition(position);
             if (explanation != null) q.setExplanation(explanation.isEmpty() ? null : explanation);
+            if (html != null) q.setHtml(html.isEmpty() ? null : html);
             q.setType(type);
             q.setText(text);
             q.setTopic(topic);
             q.setMaxPoints(maxPoints);
-            q.setChoiceCount(choiceCount);
+            q.setChoiceLabels(choiceLabels);
+            q.setChoiceCount(choiceLabels == null ? null : choiceLabels.length());
             q.setCorrectChoice(correctChoice);
             q.setPoolQuestionId(poolQuestionId);
+            q.setGroupId(groupRef == null ? null : groupIds.get(groupRef));
+            q.setSubLabel(subLabel);
         }
     }
 
-    private ValidExam validate(ExamRequest req, Set<Long> ownQuestionIds, long courseId) {
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s;
+    }
+
+    private ValidExam validate(ExamRequest req, Set<Long> ownQuestionIds, Set<Long> ownGroupIds, long courseId) {
         if (req == null) throw new ApiException(ErrorCode.VALIDATION_ERROR);
         Map<String, Object> errors = new LinkedHashMap<>();
         String title = req.title() == null ? "" : req.title().trim();
@@ -232,8 +313,40 @@ public class ExamService {
             errors.put("questions", "En fazla " + MAX_QUESTIONS + " soru eklenebilir");
             throw new ApiException(ErrorCode.VALIDATION_ERROR, errors);
         }
+        List<GroupRequest> groupItems = req.groups() == null ? List.of() : req.groups();
+        if (groupItems.size() > MAX_GROUPS) {
+            errors.put("groups", "En fazla " + MAX_GROUPS + " grup eklenebilir");
+            throw new ApiException(ErrorCode.VALIDATION_ERROR, errors);
+        }
+        Map<String, GroupSpec> groups = new LinkedHashMap<>();
+        Set<Long> seenGroupIds = new HashSet<>();
+        for (int i = 0; i < groupItems.size(); i++) {
+            String k = "groups[" + i + "].";
+            GroupRequest g = groupItems.get(i);
+            if (g == null) {
+                errors.put("groups[" + i + "]", "Grup boş olamaz");
+                continue;
+            }
+            String ref = g.ref() == null ? "" : g.ref().trim();
+            if (ref.isEmpty() || ref.length() > 40 || groups.containsKey(ref)) {
+                errors.put(k + "ref", "Grup anahtarı zorunlu ve tekil olmalı");
+                continue;
+            }
+            if (g.id() != null && (!ownGroupIds.contains(g.id()) || !seenGroupIds.add(g.id()))) {
+                errors.put(k + "id", "Grup bu sınava ait değil");
+            }
+            String text = blankToNull(g.text());
+            if (text != null && text.length() > MAX_TEXT) errors.put(k + "text", "En fazla " + MAX_TEXT + " karakter");
+            String html = blankToNull(g.html());
+            if (html != null && html.length() > MAX_HTML) errors.put(k + "html", "En fazla " + MAX_HTML + " karakter");
+            groups.put(ref, new GroupSpec(g.id(), ref, text, html));
+        }
+
         List<QuestionSpec> specs = new ArrayList<>();
         Set<Long> seen = new HashSet<>();
+        Set<String> closedGroups = new HashSet<>();   // groups whose run of questions has ended
+        Map<String, Set<String>> subLabels = new HashMap<>();
+        String openGroup = null;
         for (int i = 0; i < items.size(); i++) {
             String k = "questions[" + i + "].";
             QuestionRequest q = items.get(i);
@@ -255,19 +368,52 @@ public class ExamService {
             if (explanation != null && explanation.length() > MAX_TEXT) {
                 errors.put(k + "explanation", "En fazla " + MAX_TEXT + " karakter");
             }
+            String html = q.html() == null ? null : q.html().strip();
+            if (html != null && html.length() > MAX_HTML) errors.put(k + "html", "En fazla " + MAX_HTML + " karakter");
             String topic = q.topic() == null || q.topic().isBlank() ? null : q.topic().trim();
             if (topic != null && topic.length() > 120) errors.put(k + "topic", "En fazla 120 karakter");
 
-            Integer choiceCount = null;
+            String labels = null;
             String correct = null;
             if (q.type() == QuestionType.CHOICE) {
-                choiceCount = q.choiceCount();
-                if (choiceCount == null || choiceCount < 2 || choiceCount > 6) {
-                    errors.put(k + "choiceCount", "Seçenek sayısı 2 ile 6 arasında olmalı");
-                } else if (q.correctChoice() != null && !q.correctChoice().isBlank()) {
-                    correct = choiceLetter(q.correctChoice(), choiceCount);
-                    if (correct == null) errors.put(k + "correctChoice", "Doğru cevap A-" + ExamMath.letter(choiceCount) + " aralığında olmalı");
+                if (q.choiceLabels() != null && !q.choiceLabels().isBlank()) {
+                    labels = ExamLabels.normalizeLabels(q.choiceLabels());
+                    if (labels == null) {
+                        errors.put(k + "choiceLabels", "Seçenek etiketleri " + ExamLabels.MIN_LABELS + " ile "
+                                + ExamLabels.MAX_LABELS + " arasında, birbirinden farklı harf ya da rakam olmalı");
+                    }
+                } else if (q.choiceCount() == null || q.choiceCount() < ExamLabels.MIN_LABELS
+                        || q.choiceCount() > ExamLabels.MAX_LABELS) {
+                    errors.put(k + "choiceCount", "Seçenek sayısı " + ExamLabels.MIN_LABELS + " ile "
+                            + ExamLabels.MAX_LABELS + " arasında olmalı");
+                } else {
+                    labels = ExamLabels.defaultLabels(q.choiceCount());
                 }
+                if (labels != null && q.correctChoice() != null && !q.correctChoice().isBlank()) {
+                    correct = ExamLabels.choice(q.correctChoice(), labels);
+                    if (correct == null) {
+                        errors.put(k + "correctChoice", "Doğru cevap " + ExamLabels.describe(labels) + " seçeneklerinden biri olmalı");
+                    }
+                }
+            }
+            String groupRef = q.groupRef() == null || q.groupRef().isBlank() ? null : q.groupRef().trim();
+            String subLabel = q.subLabel() == null || q.subLabel().isBlank() ? null : q.subLabel().trim();
+            if (groupRef != null && !groups.containsKey(groupRef)) {
+                errors.put(k + "groupRef", "Soru istekte olmayan bir gruba bağlı");
+                groupRef = null;
+            }
+            if (groupRef == null) {
+                subLabel = null;
+            } else {
+                if (closedGroups.contains(groupRef)) errors.put(k + "groupRef", "Bir grubun soruları ardışık olmalı");
+                if (subLabel != null && (subLabel.length() > 8
+                        || !subLabels.computeIfAbsent(groupRef, g -> new HashSet<>()).add(subLabel))) {
+                    errors.put(k + "subLabel", "Alt soru etiketi en fazla 8 karakter ve grup içinde tekil olmalı");
+                }
+            }
+            if (!Objects.equals(openGroup, groupRef)) {
+                if (openGroup != null) closedGroups.add(openGroup);
+                openGroup = groupRef;
             }
             List<Long> topicIds = null;
             if (q.topicIds() != null) {
@@ -277,19 +423,22 @@ public class ExamService {
                     topicIds = List.copyOf(new LinkedHashSet<>(q.topicIds()));
                 }
             }
-            List<OptionDto> opts = validOptions(q, choiceCount, k, errors);
-            specs.add(new QuestionSpec(q.id(), q.type(), text, topic, max, choiceCount, correct, q.poolQuestionId(),
-                    topicIds, explanation, opts));
+            List<OptionDto> opts = validOptions(q, labels, k, errors);
+            specs.add(new QuestionSpec(q.id(), q.type(), text, topic, max, labels, correct, q.poolQuestionId(),
+                    topicIds, explanation, opts, groupRef, subLabel, html));
         }
         if (!errors.isEmpty()) throw new ApiException(ErrorCode.VALIDATION_ERROR, errors);
-        return new ValidExam(title, req.examDate(), specs, req.forms());
+        // Only groups that have questions are kept.
+        Set<String> used = specs.stream().map(QuestionSpec::groupRef).filter(Objects::nonNull).collect(Collectors.toSet());
+        List<GroupSpec> groupSpecs = groups.values().stream().filter(g -> used.contains(g.ref())).toList();
+        return new ValidExam(title, req.examDate(), specs, req.forms(), groupSpecs);
     }
 
     /**
-     * Options of one question request: null = unchanged; for CHOICE letters within A..choiceCount, each once, text up
-     * to {@link #MAX_OPTION_TEXT}; OPEN/FREE accept only an empty list. Sorted by letter.
+     * Options of one question request: null = unchanged; for CHOICE letters within the question's labels, each once,
+     * text up to {@link #MAX_OPTION_TEXT}; OPEN/FREE accept only an empty list. Sorted in label order.
      */
-    private static List<OptionDto> validOptions(QuestionRequest q, Integer choiceCount, String k,
+    private static List<OptionDto> validOptions(QuestionRequest q, String labels, String k,
                                                 Map<String, Object> errors) {
         if (q.options() == null) return null;
         if (q.type() != QuestionType.CHOICE) {
@@ -301,10 +450,10 @@ public class ExamService {
         for (int j = 0; j < q.options().size(); j++) {
             OptionDto o = q.options().get(j);
             String key = k + "options[" + j + "].";
-            String letter = o == null || o.letter() == null || choiceCount == null ? null
-                    : choiceLetter(o.letter(), choiceCount);
+            String letter = o == null || o.letter() == null || labels == null ? null
+                    : ExamLabels.choice(o.letter(), labels);
             if (letter == null || !letters.add(letter)) {
-                errors.put(key + "letter", "Harf seçenek sayısı içinde olmalı ve tekrar etmemeli");
+                errors.put(key + "letter", "Seçenek etiketi sorunun etiketlerinden biri olmalı ve tekrar etmemeli");
                 continue;
             }
             String text = o.text() == null ? "" : o.text().strip();
@@ -315,16 +464,9 @@ public class ExamService {
             }
             out.add(new OptionDto(letter, text, rationale));
         }
-        out.sort(Comparator.comparing(OptionDto::letter));
+        String order = labels == null ? "" : labels;
+        out.sort(Comparator.comparingInt(o -> order.indexOf(o.letter())));
         return out;
-    }
-
-    /** Uppercased single letter within A..(choiceCount-th letter), or null when invalid. */
-    private static String choiceLetter(String raw, int choiceCount) {
-        String s = raw.trim().toUpperCase(Locale.ROOT);
-        if (s.length() != 1) return null;
-        char c = s.charAt(0);
-        return c >= 'A' && c < 'A' + choiceCount ? s : null;
     }
 
     // ---- results -------------------------------------------------------------------------------
@@ -424,9 +566,9 @@ public class ExamService {
             switch (q.getType()) {
                 case CHOICE -> {
                     String raw = a.answer() == null ? "" : a.answer().trim();
-                    String letter = raw.isEmpty() ? null : choiceLetter(raw, q.getChoiceCount());
+                    String letter = raw.isEmpty() ? null : ExamLabels.choice(raw, q.labels());
                     if (!raw.isEmpty() && letter == null) {
-                        errors.put(k + "answer", "Cevap A-" + ExamMath.letter(q.getChoiceCount()) + " aralığında olmalı");
+                        errors.put(k + "answer", "Cevap " + ExamLabels.describe(q.labels()) + " seçeneklerinden biri olmalı");
                     } else {
                         out.put(q.getId(), new AnswerValue(letter,
                                 ExamMath.choicePoints(letter, q.getCorrectChoice(), q.getMaxPoints())));
@@ -517,6 +659,7 @@ public class ExamService {
         Map<Long, List<Topics.Ref>> effective =
                 topics.effectiveOfExamQuestions(questions.stream().map(ExamQuestion::getId).toList());
         Map<Long, List<OptionDto>> opts = options.of(questions.stream().map(ExamQuestion::getId).toList());
+        Map<Long, String> labels = ExamLabels.labels(questions);
 
         List<MyQuestionDto> out = new ArrayList<>();
         ReviewTally tally = new ReviewTally();
@@ -527,9 +670,10 @@ public class ExamService {
                     ? q.getCorrectChoice().equals(a.getAnswerText()) : null;
             String myAnswer = a == null || q.getType() == QuestionType.FREE ? null : a.getAnswerText();
             List<Topics.Ref> refs = effective.getOrDefault(q.getId(), List.of());
-            out.add(new MyQuestionDto(q.getPosition(), q.getText(), q.getType(), myAnswer, q.getCorrectChoice(),
-                    correct, ExamMath.normalize(points), ExamMath.normalize(q.getMaxPoints()), topicDtos(refs),
-                    opts.getOrDefault(q.getId(), List.of()), q.getExplanation(), questionStats(q, data, exam)));
+            out.add(new MyQuestionDto(q.getPosition(), labels.get(q.getId()), q.getText(), q.getHtml(), q.getType(),
+                    q.labels(), myAnswer, q.getCorrectChoice(), correct, ExamMath.normalize(points),
+                    ExamMath.normalize(q.getMaxPoints()), topicDtos(refs), opts.getOrDefault(q.getId(), List.of()),
+                    q.getExplanation(), questionStats(q, data, exam), q.getGroupId()));
             tally.add(refs, isMissed(points, q.getMaxPoints()));
         }
         List<BigDecimal> totals = data.results(exam).stream().map(r -> ExamQueries.resultTotal(data.answers(r)))
@@ -538,7 +682,7 @@ public class ExamService {
                 ExamMath.max(totals));
         return new MyResultDetailDto(exam.getId(), exam.getTitle(), exam.getExamDate(),
                 ExamQueries.resultTotal(data.answers(result)), ExamQueries.examTotal(questions), stats, out,
-                tally.result());
+                tally.result(), groupDtos(groupRepo.findByExamId(exam.getId()), questions));
     }
 
     /** Aggregates of one question over every result of the exam (no per-student data). */
@@ -548,9 +692,10 @@ public class ExamService {
         int full = 0;
         BigDecimal sum = BigDecimal.ZERO;
         Map<String, Integer> choices = new LinkedHashMap<>();
-        boolean choice = q.getType() == QuestionType.CHOICE && q.getChoiceCount() != null;
+        String labels = q.labels();
+        boolean choice = labels != null;
         if (choice) {
-            for (int i = 1; i <= q.getChoiceCount(); i++) choices.put(ExamMath.letter(i), 0);
+            for (char c : labels.toCharArray()) choices.put(String.valueOf(c), 0);
             choices.put("blank", 0);
         }
         for (ExamResult r : data.results(exam)) {
@@ -640,11 +785,12 @@ public class ExamService {
         Exam exam = queries.requireExam(examId);
         ExamQueries.Snapshot data = queries.load(List.of(exam));
         List<ExamQuestion> questions = data.questions(exam);
+        Map<Long, String> labels = ExamLabels.labels(questions);
 
         List<String> header = new ArrayList<>(List.of("OgrenciNo", "AdSoyad"));
         for (ExamQuestion q : questions) {
-            header.add("S" + q.getPosition());
-            header.add("S" + q.getPosition() + " Puan");
+            header.add("S" + labels.get(q.getId()));
+            header.add("S" + labels.get(q.getId()) + " Puan");
         }
         header.add("Toplam");
         StringBuilder sb = new StringBuilder(CsvExportService.BOM);

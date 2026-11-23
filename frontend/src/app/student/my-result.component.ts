@@ -5,7 +5,9 @@ import { AuthService } from '../core/auth.service';
 import { MSG } from '../shared/messages';
 import { errorMessage } from '../shared/errors';
 import { TopicChipsComponent } from '../shared/topics/topic-chips.component';
-import type { MyResultDetailDto } from '../core/api.models';
+import { RichHtmlComponent } from '../shared/rich-html.component';
+import { hasRichContent } from '../shared/rich-html';
+import type { ExamGroupDto, MyResultDetailDto } from '../core/api.models';
 import { correctShareText, OptionRow, percent, ResultView, resultView, sortByMostMissed, textSegments } from './my-result.logic';
 
 const EMPTY_VIEW: ResultView = { reviewTopics: [], questions: [], hasTopics: false, missedCount: 0, hasQuestionStats: false };
@@ -17,10 +19,10 @@ const EMPTY_VIEW: ResultView = { reviewTopics: [], questions: [], hasTopics: fal
  */
 @Component({
   selector: 'app-my-result',
-  imports: [RouterLink, TopicChipsComponent],
+  imports: [RouterLink, TopicChipsComponent, RichHtmlComponent],
   template: `
-    <div class="container">
-      <nav class="breadcrumb" aria-label="Konum">
+    <div class="container result-page">
+      <nav class="breadcrumb no-print" aria-label="Konum">
         <a routerLink="/courses">{{ msg.my.title }}</a> ›
         <a [routerLink]="['/courses', id()]">{{ courseCode() || m.back }}</a>
         @if (result(); as r) { › {{ r.title }} }
@@ -31,8 +33,10 @@ const EMPTY_VIEW: ResultView = { reviewTopics: [], questions: [], hasTopics: fal
         <div class="page-header">
           <div>
             <h1>{{ m.pageTitle }}</h1>
-            <div class="exam-title">{{ r.title }}@if (r.examDate) { <span class="text-sm text-secondary"> · {{ formatDay(r.examDate) }}</span> }</div>
+            <div class="exam-title">{{ courseCode() }} {{ r.title }}@if (r.examDate) { <span class="text-sm text-secondary"> · {{ formatDay(r.examDate) }}</span> }</div>
+            <div class="print-only text-sm">{{ me() }}</div>
           </div>
+          <button type="button" class="btn btn-outline btn-sm no-print" (click)="print()">{{ m.print }}</button>
         </div>
 
         <div class="score-row">
@@ -55,7 +59,7 @@ const EMPTY_VIEW: ResultView = { reviewTopics: [], questions: [], hasTopics: fal
           }
         </div>
 
-        <section class="card review" aria-labelledby="review-title">
+        <section class="card review no-print" aria-labelledby="review-title">
           <h2 id="review-title">{{ m.review }}</h2>
           @if (!view().hasTopics) {
             <p class="text-secondary">{{ m.noTopics }}</p>
@@ -78,7 +82,7 @@ const EMPTY_VIEW: ResultView = { reviewTopics: [], questions: [], hasTopics: fal
 
         <div class="q-head">
           <h2>{{ m.questions }}</h2>
-          <div class="q-controls">
+          <div class="q-controls no-print">
             <label class="toggle">
               <input type="checkbox" [checked]="onlyMissed()" (change)="onlyMissed.set($any($event.target).checked)" />
               {{ m.onlyMissed }} ({{ view().missedCount }})
@@ -93,9 +97,18 @@ const EMPTY_VIEW: ResultView = { reviewTopics: [], questions: [], hasTopics: fal
         </div>
 
         @for (q of shown(); track q.position) {
-          <article class="card question" [class.is-wrong]="q.status === 'wrong'" [class.is-right]="q.status === 'right'" [class.is-partial]="q.status === 'partial'">
+          @if (groupHeadOf(q); as g) {
+            <section class="card group-card">
+              <div class="q-top"><strong>{{ m.question }} {{ g.label }}</strong><span class="text-sm text-secondary">· {{ m.group }}</span></div>
+              @if (g.html) { <app-rich-html [html]="g.html" /> }
+              @else { @for (seg of segments(g.text); track $index) {
+                @if (seg.code) { <pre class="q-code"><code>{{ seg.text }}</code></pre> } @else { <div class="q-text">{{ seg.text }}</div> }
+              } }
+            </section>
+          }
+          <article class="card question" [class.is-wrong]="q.status === 'wrong'" [class.is-right]="q.status === 'right'" [class.is-partial]="q.status === 'partial'" [class.sub]="q.groupId != null">
             <div class="q-top">
-              <strong>{{ m.question }} {{ q.position }}</strong>
+              <strong>{{ m.question }} {{ q.printed }}</strong>
               @switch (q.status) {
                 @case ('right') { <span class="badge badge-success">✓ {{ m.right }}</span> }
                 @case ('wrong') { <span class="badge badge-danger">✗ {{ m.wrong }}</span> }
@@ -112,10 +125,11 @@ const EMPTY_VIEW: ResultView = { reviewTopics: [], questions: [], hasTopics: fal
               </div>
             }
 
-            @for (seg of segments(q.text); track $index) {
+            @if (hasHtml(q.html)) { <app-rich-html [html]="q.html" /> }
+            @else { @for (seg of segments(q.text); track $index) {
               @if (seg.code) { <pre class="q-code"><code>{{ seg.text }}</code></pre> }
               @else { <div class="q-text">{{ seg.text }}</div> }
-            }
+            } }
 
             @if (q.optionRows.length) {
               <ul class="options" [attr.aria-label]="m.options">
@@ -132,7 +146,7 @@ const EMPTY_VIEW: ResultView = { reviewTopics: [], questions: [], hasTopics: fal
                       </div>
                     </div>
                     @if (o.share !== null) {
-                      <div class="bar-row" [attr.aria-label]="o.letter + ': %' + pct(o.share) + ', ' + o.count">
+                      <div class="bar-row no-print" [attr.aria-label]="o.letter + ': %' + pct(o.share) + ', ' + o.count">
                         <div class="bar"><div class="fill" [style.width.%]="pct(o.share)"></div></div>
                         <span class="bar-text">%{{ pct(o.share) }} · {{ o.count }}</span>
                       </div>
@@ -226,6 +240,18 @@ const EMPTY_VIEW: ResultView = { reviewTopics: [], questions: [], hasTopics: fal
     .answer.wrong { background: var(--c-danger-light); border-color: var(--c-danger); color: var(--c-danger); }
     .answer.right, .answer.key { background: var(--c-success-light); border-color: var(--c-success); color: var(--c-success); }
     .explanation { margin: 8px 0 4px; padding: 8px 10px; border-left: 3px solid var(--c-primary); background: var(--c-primary-light); border-radius: 4px; }
+    .group-card { margin: var(--space-md) 0 var(--space-sm); border-left: 4px solid var(--c-primary); background: var(--c-primary-light); }
+    .question.sub { margin-left: 16px; }
+    .print-only { display: none; }
+    @media print {
+      .no-print { display: none !important; }
+      .print-only { display: block; }
+      .result-page { max-width: none; padding: 0; }
+      .card { box-shadow: none; border: 1px solid #bbb; break-inside: avoid; }
+      .question.sub { margin-left: 10mm; }
+      .badge { border: 1px solid currentColor; }
+      @page { margin: 14mm 12mm; }
+    }
   `],
 })
 export class MyResultComponent {
@@ -256,9 +282,22 @@ export class MyResultComponent {
     return r && r.maxPoints > 0 ? Math.round((r.points / r.maxPoints) * 100) : null;
   });
   readonly courseCode = computed(() => this.auth.user()?.courses.find(c => c.id === Number(this.id()))?.code ?? '');
+  /** Student line on the printed copy: number and name as the sign-in knows them. */
+  readonly me = computed(() => {
+    const u = this.auth.user();
+    return u ? [u.studentNo, u.fullName].filter(Boolean).join(' · ') : '';
+  });
 
   readonly segments = textSegments;
   readonly shareText = correctShareText;
+  readonly hasHtml = hasRichContent;
+
+  /** Group stem before the group's first question; hidden when the list is re-sorted by class misses. */
+  groupHeadOf(q: { groupHead: ExamGroupDto | null }): ExamGroupDto | null {
+    return this.mostMissed() ? null : q.groupHead;
+  }
+
+  print() { window.print(); }
 
   constructor() {
     effect(() => {

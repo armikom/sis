@@ -1,5 +1,6 @@
-import type { MyResultDetailDto, MyResultQuestionDto } from '../core/api.models';
+import type { ExamGroupDto, MyResultDetailDto, MyResultQuestionDto } from '../core/api.models';
 import { apiTopics, fromApiTopic, Topic } from '../shared/topics/topic';
+import { isLabel, questionLabel, reviewLabels } from '../shared/question-labels';
 export { textSegments, type TextSegment } from '../shared/text-segments';
 
 export interface ReviewTopicRow { topic: Topic; missed: number; total: number }
@@ -27,6 +28,10 @@ export interface QuestionStatsView {
 }
 
 export interface ResultQuestionRow extends MyResultQuestionDto {
+  /** Number printed on the paper ("4", "3a"). */
+  printed: string;
+  /** The group whose header is shown right before this question (its first question), if any. */
+  groupHead: ExamGroupDto | null;
   topicList: Topic[];
   missed: boolean;
   status: 'right' | 'wrong' | 'partial' | 'none';
@@ -60,7 +65,7 @@ export function questionStatus(q: Pick<MyResultQuestionDto, 'correct' | 'points'
 }
 
 const BLANK = 'blank';
-const isLetter = (s: string | null | undefined): s is string => !!s && /^[A-Z]$/.test(s);
+const isLetter = isLabel;
 const sum = (counts: Record<string, number>) => Object.values(counts).reduce((a, n) => a + (Number(n) || 0), 0);
 
 /** Class statistics of a question, or null when the server sent none. */
@@ -81,7 +86,8 @@ export function questionStats(q: MyResultQuestionDto): QuestionStatsView | null 
 
 /**
  * Option rows: every recorded option, plus letters that only appear in the class counts, the key or my answer, so each
- * letter is shown once. Empty for questions with neither option texts nor class counts (they keep the letter-only line).
+ * letter is shown once, in the question's label order. Empty for questions with neither option texts nor class counts
+ * (they keep the letter-only line).
  */
 export function optionRows(q: MyResultQuestionDto): OptionRow[] {
   const options = (q.options ?? []).filter(o => isLetter(o.letter?.toUpperCase()));
@@ -96,7 +102,9 @@ export function optionRows(q: MyResultQuestionDto): OptionRow[] {
   if (isLetter(key)) letters.add(key);
   if (isLetter(mine)) letters.add(mine);
   const countOf = (l: string) => Number(counts[l] ?? counts[l.toLowerCase()] ?? 0) || 0;
-  return [...letters].sort().map(l => {
+  const order = reviewLabels(q);
+  const rank = (l: string) => { const i = order.indexOf(l); return i < 0 ? order.length : i; };
+  return [...letters].sort((a, b) => (rank(a) - rank(b)) || a.localeCompare(b)).map(l => {
     const o = options.find(x => x.letter.toUpperCase() === l);
     const count = hasCounts ? countOf(l) : null;
     return {
@@ -111,12 +119,17 @@ export function resultView(d: MyResultDetailDto): ResultView {
   const reviewTopics = (d.reviewTopics ?? [])
     .filter(r => r && r.topic)
     .map(r => ({ topic: fromApiTopic(r.topic), missed: r.missed ?? 0, total: r.total ?? 0 }));
+  const groups = new Map((d.groups ?? []).map(g => [g.id, g]));
+  let prevGroup: number | null = null;
   const questions = [...(d.questions ?? [])]
     .sort((a, b) => a.position - b.position)
     .map(q => {
       const rows = optionRows(q);
+      const gid = q.groupId ?? null;
+      const groupHead = gid != null && gid !== prevGroup ? groups.get(gid) ?? null : null;
+      prevGroup = gid;
       return {
-        ...q, topicList: apiTopics(q.topics), missed: isMissed(q), status: questionStatus(q),
+        ...q, printed: questionLabel(q), groupHead, topicList: apiTopics(q.topics), missed: isMissed(q), status: questionStatus(q),
         optionRows: rows, hasOptionTexts: rows.some(r => r.text || r.rationale), statsView: questionStats(q),
       };
     });

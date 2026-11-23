@@ -39,12 +39,28 @@ public class ExamQuestion {
     @Column(name = "choice_count")
     private Integer choiceCount;
 
+    /** One character per option as printed ("ABCD", "DY", "10"); null on rows older than V4 (then A.. of choiceCount). */
+    @Column(name = "choice_labels", length = 16)
+    private String choiceLabels;
+
     @Column(name = "correct_choice", length = 1)
     private String correctChoice;
 
     /** The pool question this item was drawn from, if any. */
     @Column(name = "pool_question_id")
     private Long poolQuestionId;
+
+    /** Group of sub-questions this question belongs to ({@link ExamQuestionGroup}), if any. */
+    @Column(name = "group_id")
+    private Long groupId;
+
+    /** Label inside the group ("a", "b", …); blank = assigned from the order in the group. */
+    @Column(name = "sub_label", length = 8)
+    private String subLabel;
+
+    /** Rich content (HTML, sanitized when displayed); shown instead of {@code text} when present. */
+    @Column(columnDefinition = "text")
+    private String html;
 
     protected ExamQuestion() {}
 
@@ -72,4 +88,19 @@ public class ExamQuestion {
     public void setCorrectChoice(String correctChoice) { this.correctChoice = correctChoice; }
     public Long getPoolQuestionId() { return poolQuestionId; }
     public void setPoolQuestionId(Long poolQuestionId) { this.poolQuestionId = poolQuestionId; }
+    public String getChoiceLabels() { return choiceLabels; }
+    public void setChoiceLabels(String choiceLabels) { this.choiceLabels = choiceLabels; }
+    public Long getGroupId() { return groupId; }
+    public void setGroupId(Long groupId) { this.groupId = groupId; }
+    public String getSubLabel() { return subLabel; }
+    public void setSubLabel(String subLabel) { this.subLabel = subLabel; }
+    public String getHtml() { return html; }
+    public void setHtml(String html) { this.html = html; }
+
+    /** Effective option labels of a CHOICE question: stored labels, else A.. of {@code choiceCount}; null otherwise. */
+    public String labels() {
+        if (type != QuestionType.CHOICE) return null;
+        if (choiceLabels != null && !choiceLabels.isEmpty()) return choiceLabels;
+        return choiceCount == null ? null : ExamLabels.defaultLabels(choiceCount);
+    }
 }

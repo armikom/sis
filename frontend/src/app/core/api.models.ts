@@ -60,6 +60,13 @@ export interface TopicDto {
 }
 export interface MyResultQuestionDto {
   position: number; text: string | null; type: QuestionType; myAnswer: string | null; correctChoice: string | null;
+  /** Number printed on the paper ("4", "3a"); absent on older servers (then the position). */
+  label?: string | null;
+  /** Rich content shown instead of `text` when present (sanitized on display). */
+  html?: string | null;
+  /** One character per option ("ABCD", "DY"); absent = A.. of the options/counts. */
+  choiceLabels?: string | null;
+  groupId?: number | null;
   /** null: not a choice question (or not graded as right/wrong). */
   correct: boolean | null; points: number | null; maxPoints: number; topics?: TopicDto[];
   options?: ExamOptionDto[]; explanation?: string | null;
@@ -81,6 +88,8 @@ export interface MyResultDetailDto extends MyResultDto {
   questions: MyResultQuestionDto[]; reviewTopics: ReviewTopicDto[];
   /** Class statistics; absent = none. */
   stats?: MyResultStatsDto | null;
+  /** Question groups (shared stems) of the exam; absent on older servers. */
+  groups?: ExamGroupDto[];
 }
 
 export interface ClassroomDto { id: number; name: string; latitude?: number; longitude?: number; radiusM?: number; bleBeaconId?: string; hasBleKey: boolean; }
@@ -148,6 +157,15 @@ export type QuestionType = 'CHOICE' | 'OPEN' | 'FREE';
 export interface QuestionDto {
   id: number; position: number; type: QuestionType; text: string | null; topic: string | null;
   maxPoints: number; choiceCount: number | null; correctChoice: string | null; poolQuestionId?: number | null;
+  /** Number printed on the paper: "4", or "3a" inside a group. Absent on older servers (then the position). */
+  label?: string | null;
+  /** One character per option as printed ("ABCD", "DY", "10"); absent = A.. of choiceCount. */
+  choiceLabels?: string | null;
+  /** Rich content (HTML) shown instead of `text` when present; sanitized on display. */
+  html?: string | null;
+  /** Group of sub-questions this question belongs to, and its label inside the group ("a"; null = by order). */
+  groupId?: number | null;
+  subLabel?: string | null;
   /** Explicitly linked chapter topics (editable). */
   topicIds?: number[];
   /** Effective topics: the explicit ones plus the linked pool question's (read-only). */
@@ -161,23 +179,35 @@ export interface ExamOptionDto { letter: string; text: string | null; rationale:
 export interface QuestionRequest {
   id?: number | null; type: QuestionType; text?: string | null; topic?: string | null;
   maxPoints: number; choiceCount?: number | null; correctChoice?: string | null; topicIds?: number[];
+  /** Preferred over choiceCount: one character per option ("ABCD", "DY"). */
+  choiceLabels?: string | null;
   /** Absent = unchanged; present = replaces the set. */
   options?: ExamOptionDto[];
   /** Absent = unchanged. */
   explanation?: string | null;
+  /** Absent = unchanged; "" clears. */
+  html?: string | null;
+  /** `ref` of a group in the same request; absent/null = not grouped. */
+  groupRef?: string | null;
+  subLabel?: string | null;
 }
+/** A group of sub-questions (shared stem). `position` is the number printed; `questionIds` in position order. */
+export interface ExamGroupDto { id: number; position: number; label: string; text: string | null; html: string | null; questionIds: number[]; }
+export interface ExamGroupRequest { id?: number | null; ref: string; text?: string | null; html?: string | null; }
 export interface ExamDto {
   id: number; courseId: number; courseCode: string; courseName: string; title: string;
   examDate: string | null; forms?: number; seed?: number | null;
   totalPoints: number; resultCount: number; createdAt: string; questions: QuestionDto[];
   /** Students see their results (and the answer key) only when published. */
   published?: boolean;
+  /** Question groups; absent on older servers. */
+  groups?: ExamGroupDto[];
 }
 export interface ExamSummaryDto {
   id: number; courseId: number; title: string; examDate: string | null; questionCount: number;
   totalPoints: number; resultCount: number; averagePoints: number | null; createdAt: string; published?: boolean;
 }
-export interface ExamRequest { title: string; examDate?: string | null; questions: QuestionRequest[]; }
+export interface ExamRequest { title: string; examDate?: string | null; questions: QuestionRequest[]; groups?: ExamGroupRequest[]; }
 export interface ExamAnswerDto { questionId: number; answer: string | null; points: number | null; }
 export interface ExamResultDto {
   id: number; personId?: number; studentNo: string; fullName: string; form?: string | null; note: string | null; totalPoints: number;
@@ -189,7 +219,7 @@ export interface ExamDraftDto { studentNo: string; sheet: unknown; updatedAt: st
 export interface ExamDraftSavedDto { studentNo: string; updatedAt: string; }
 
 export interface QuestionAnalysisDto {
-  questionId: number; position: number; type: QuestionType; topic: string | null; maxPoints: number;
+  questionId: number; position: number; label?: string | null; type: QuestionType; topic: string | null; maxPoints: number;
   gradedCount: number; averagePoints: number | null; successRate: number | null;
   /** CHOICE only; key "" counts blank answers. */
   choiceCounts: Record<string, number> | null;
@@ -209,7 +239,7 @@ export interface CourseLearningDto { courseId: number; exams: ExamSummaryDto[]; 
 export interface StudentExamDto { examId: number; title: string; examDate: string | null; totalPoints: number; maxPoints: number; percent: number | null; complete: boolean; }
 export interface StudentTopicDto { topic: string; questionCount: number; earnedPoints: number; maxPoints: number; successRate: number | null; }
 export interface MissedQuestionDto {
-  examId: number; examTitle: string; position: number; topic: string | null; text: string | null;
+  examId: number; examTitle: string; position: number; label?: string | null; topic: string | null; text: string | null;
   answer: string | null; correctChoice: string | null; points: number; maxPoints: number;
 }
 export interface StudentLearningDto {

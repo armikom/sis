@@ -130,6 +130,7 @@ export const MSG = {
     explanation: 'Cevap açıklaması', showAll: 'Tüm açıklamaları göster', hideAll: 'Diğer açıklamaları gizle',
     mine: 'Sizin cevabınız', key: 'Doğru cevap', blankAnswers: 'Boş bırakan',
     answered: (n: number) => `${n} öğrenci yanıtladı`, classAvgPoints: 'Sınıf ortalaması', options: 'Seçenekler',
+    print: 'Yazdır / PDF', group: 'Soru grubu',
   },
   courseStudent: {
     title: 'Öğrenci', inactive: 'Pasif', nickname: 'Takma ad', lastLogin: 'Son giriş', never: 'hiç giriş yapmadı',

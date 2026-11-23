@@ -6,7 +6,7 @@
  */
 import type { ExamDraftDto, QuestionDto } from '../core/api.models';
 import { EXAM_DRAFT_PREFIX } from '../core/storage';
-import { emptyCell, type Cell, type Sheet } from './exam-entry.logic';
+import { emptyCell, lettersFor, type Cell, type Sheet } from './exam-entry.logic';
 
 export function draftKey(examId: string | number): string {
   return EXAM_DRAFT_PREFIX + examId;
@@ -36,7 +36,7 @@ interface StoredDrafts {
 
 /** Fingerprint of what the cells are indexed and interpreted by. */
 export function questionsKey(questions: readonly QuestionDto[]): string {
-  return JSON.stringify(questions.map(q => [q.id, q.type, q.choiceCount ?? 0]));
+  return JSON.stringify(questions.map(q => [q.id, q.type, q.type === 'CHOICE' ? lettersFor(q).join('') : '']));
 }
 
 export function makeDraft(sheet: Sheet, base: string, name: string | null | undefined): StudentDraft {

@@ -6,13 +6,14 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ApiService } from '../core/api.service';
 import { errorMessage } from '../shared/errors';
-import type { ExamDraftDto, ExamDto, ExamResultDto, QuestionDto, RosterEntryDto } from '../core/api.models';
+import type { ExamDraftDto, ExamDto, ExamGroupDto, ExamResultDto, QuestionDto, RosterEntryDto } from '../core/api.models';
 import {
   STATUS_LABEL, type Cell, type ResultSummary, type Sheet, type StudentRow,
   bubbleMark, entryOrder, rowMark, searchKey, sheetSummary, buildRequest, buildStudentList, clickBubble, emptySheet, filterStudents, formatPoints, groupRuns,
-  invalidQuestions, lettersFor, nextStudent, pointsError, progress, reduceKey, setActive, sheetFromResult,
+  invalidQuestions, labelOf, lettersFor, nextStudent, pointsError, progress, reduceKey, setActive, sheetFromResult,
   entryFeedback, sheetSignature, sortQuestions, studentStatus, summarize, unenteredChoices, updateCell, upsertResult,
 } from './exam-entry.logic';
+import { richSummary } from '../shared/rich-html';
 import { EntrySounds } from './entry-sounds';
 import { getItem, removeItem, setItem } from '../core/storage';
 import {
@@ -160,15 +161,16 @@ const SYNC_RETRY_MS = 15000;
 
               <div class="active-info text-sm" aria-live="polite">
                 @if (activeQuestion(); as q) {
-                  <strong>Soru {{ q.position }}</strong>
+                  <strong>Soru {{ label(q) }}</strong>
                   <span class="text-secondary"> · {{ typeLabel(q) }} · {{ num(q.maxPoints) }} p</span>
+                  @if (q.type === 'CHOICE') { <span class="text-secondary"> · {{ letters(q).join('/') }}</span> }
                   @if (q.topic) { <span class="topic">{{ q.topic }}</span> }
-                  @if (q.text) { <span class="qtext text-secondary">{{ q.text }}</span> }
+                  @if (summaryOf(q); as t) { <span class="qtext text-secondary">{{ t }}</span> }
                 }
               </div>
 
               <p class="hint text-sm" aria-label="Klavye kısayolları">
-                <kbd>A</kbd>–<kbd>F</kbd> işaretle · <kbd>Boşluk</kbd>/<kbd>-</kbd> boş · <kbd>⌫</kbd> geri dön ve sil ·
+                <kbd>A</kbd>–<kbd>F</kbd> / <kbd>D</kbd><kbd>Y</kbd> / <kbd>1</kbd><kbd>0</kbd> (sorunun etiketi) işaretle · <kbd>Boşluk</kbd>/<kbd>-</kbd> boş · <kbd>⌫</kbd> geri dön ve sil ·
                 <kbd>←</kbd><kbd>→</kbd>/<kbd>Tab</kbd> gezin · <kbd>Enter</kbd> son soruda kaydet · <kbd>Ctrl/⌘</kbd>+<kbd>Enter</kbd> kaydet
                 @if (!sheetFocused() && activeQuestion()?.type === 'CHOICE') { <span class="focus-tip">· yazmak için kağıda tıklayın</span> }
                 · <button type="button" class="sound-toggle" (mousedown)="$event.preventDefault()" (click)="sounds.toggle()" [attr.aria-pressed]="sounds.enabled()"
@@ -183,15 +185,18 @@ const SYNC_RETRY_MS = 15000;
                       @for (i of run.indices; track i) {
                         @let q = questions()[i];
                         @let c = sheet().cells[i];
-                        <div class="qrow" [id]="'q-' + i" [class.active]="i === sheet().active" [class.done]="c.entered"
+                        @if (groupHead(i); as g) {
+                          <div class="grp-head" [title]="groupTitle(g)"><span class="qno">{{ g.label }}</span><span class="grp-text">{{ groupTitle(g) || 'Soru grubu' }}</span></div>
+                        }
+                        <div class="qrow" [id]="'q-' + i" [class.active]="i === sheet().active" [class.done]="c.entered" [class.sub]="q.groupId != null"
                           [class.cue]="cue() === i" [class.row-wrong]="rmark(q, c) === 'wrong'"
                           [attr.title]="questionTitle(q)" (click)="activate(i)">
-                          <span class="qno">{{ q.position }}</span>
+                          <span class="qno">{{ label(q) }}</span>
                           @for (L of letters(q); track L) {
                             @let m = mark(q, c, L);
                             <button type="button" class="bubble" tabindex="-1"
                               [class.on]="c.entered && c.answer === L" [class.correct]="m === 'correct'" [class.wrong]="m === 'wrong'" [class.key]="m === 'key'"
-                              [attr.aria-label]="'Soru ' + q.position + ' ' + L" [attr.aria-pressed]="c.entered && c.answer === L"
+                              [attr.aria-label]="'Soru ' + label(q) + ' ' + L" [attr.aria-pressed]="c.entered && c.answer === L"
                               (mousedown)="$event.preventDefault()" (click)="onBubble($event, i, L)">{{ L }}</button>
                           }
                           <span class="blank-mark" [class.show]="c.entered && !c.answer" title="Boş bırakıldı">–</span>
@@ -204,16 +209,19 @@ const SYNC_RETRY_MS = 15000;
                         @let q = questions()[i];
                         @let c = sheet().cells[i];
                         @let err = pointsErr(q, c);
+                        @if (groupHead(i); as g) {
+                          <div class="grp-head card-head"><span class="qno">{{ g.label }}</span><span class="grp-text">{{ groupTitle(g) || 'Soru grubu' }}</span></div>
+                        }
                         <div class="score-card" [id]="'q-' + i" [class.active]="i === sheet().active" (click)="onCardClick($event, i)">
                           <div class="score-head">
-                            <span class="qno">{{ q.position }}</span>
+                            <span class="qno">{{ label(q) }}</span>
                             <span class="badge badge-info">{{ typeLabel(q) }}</span>
                             @if (q.topic) { <span class="topic">{{ q.topic }}</span> }
-                            @if (q.text) { <span class="qtext text-secondary text-sm">{{ q.text }}</span> }
+                            @if (summaryOf(q); as t) { <span class="qtext text-secondary text-sm">{{ t }}</span> }
                           </div>
                           <div class="score-inputs">
                             <input class="form-input pts" [id]="'pts-' + i" type="text" inputmode="decimal" autocomplete="off"
-                              [class.invalid]="!!err" [value]="c.points" [attr.aria-label]="'Soru ' + q.position + ' puanı'"
+                              [class.invalid]="!!err" [value]="c.points" [attr.aria-label]="'Soru ' + label(q) + ' puanı'"
                               [attr.aria-invalid]="!!err" (input)="onPoints(i, $any($event.target).value)"
                               (focus)="activate(i, false)" (keydown)="onPointsKey($event, i)" />
                             <span class="text-secondary">/ {{ num(q.maxPoints) }}</span>
@@ -222,7 +230,7 @@ const SYNC_RETRY_MS = 15000;
                           </div>
                           @if (err) { <span class="form-error">{{ err }}</span> }
                           @if (q.type === 'OPEN') {
-                            <textarea class="form-input answer" rows="2" placeholder="Cevap (isteğe bağlı)" [attr.aria-label]="'Soru ' + q.position + ' cevabı'"
+                            <textarea class="form-input answer" rows="2" placeholder="Cevap (isteğe bağlı)" [attr.aria-label]="'Soru ' + label(q) + ' cevabı'"
                               [value]="c.text" (input)="onText(i, $any($event.target).value)" (focus)="activate(i, false)"></textarea>
                           }
                         </div>
@@ -322,6 +330,12 @@ const SYNC_RETRY_MS = 15000;
     .blank-mark { visibility: hidden; width: 14px; text-align: center; font-weight: 700; color: var(--c-text-secondary); }
     .blank-mark.show { visibility: visible; }
     .qrow.cue { animation: cue 0.3s; border-color: var(--c-danger); }
+    .qrow.sub .qno { font-size: 0.72rem; }
+    .grp-head { display: flex; align-items: baseline; gap: 6px; padding: 6px 6px 2px; break-inside: avoid; break-after: avoid; color: var(--c-text-secondary); font-size: 0.78rem; }
+    .grp-head .qno { color: var(--c-primary); }
+    .grp-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 11rem; }
+    .grp-head.card-head { padding: 2px 4px 0; }
+    .grp-head.card-head .grp-text { max-width: none; white-space: normal; }
     @keyframes cue { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
     @media (pointer: coarse) { .bubble { width: 32px; height: 32px; } .bubble-block { columns: 15rem; } }
 
@@ -400,6 +414,7 @@ export class ExamEntryComponent implements OnInit {
 
   readonly questions = computed(() => sortQuestions(this.exam()?.questions ?? []));
   readonly runs = computed(() => groupRuns(this.questions()));
+  readonly groupsById = computed(() => new Map((this.exam()?.groups ?? []).map(g => [g.id, g])));
   readonly rows = computed(() => buildStudentList(this.roster(), this.results(), this.extras()));
   /** Students still to enter come first: the screen is mainly for entering new answers. */
   readonly filteredRows = computed(() => entryOrder(filterStudents(this.rows(), this.search())));
@@ -495,6 +510,23 @@ export class ExamEntryComponent implements OnInit {
   num(n: number) { return NUM.format(n); }
   pct(n: number) { return PCT.format(n); }
   letters(q: QuestionDto) { return lettersFor(q); }
+  label(q: QuestionDto) { return labelOf(q); }
+  /** First line of the question's content (rich content first), for the compact row/heading. */
+  summaryOf(q: QuestionDto): string {
+    if (q.html?.trim()) return richSummary(q.html);
+    return (q.text ?? '').trim().split('\n')[0].slice(0, 160);
+  }
+  /** The group whose header belongs right before question i (its first question), else null. */
+  groupHead(i: number): ExamGroupDto | null {
+    const qs = this.questions();
+    const gid = qs[i]?.groupId ?? null;
+    if (gid == null || (i > 0 && qs[i - 1].groupId === gid)) return null;
+    return this.groupsById().get(gid) ?? { id: gid, position: 0, label: labelOf(qs[i]).replace(/[a-z].*$/i, ''), text: null, html: null, questionIds: [] };
+  }
+  groupTitle(g: ExamGroupDto): string {
+    if (g.html?.trim()) return richSummary(g.html, 120);
+    return (g.text ?? '').trim().split('\n')[0].slice(0, 120);
+  }
   mark(q: QuestionDto, c: Cell, letter: string) { return bubbleMark(q, c, letter); }
   rmark(q: QuestionDto, c: Cell) { return rowMark(q, c); }
   pointsErr(q: QuestionDto, c: Cell) { return pointsError(q, c.points); }
@@ -503,7 +535,7 @@ export class ExamEntryComponent implements OnInit {
   hasDraft(no: string) { return no in this.drafts(); }
   statusLabel(r: StudentRow) { return STATUS_LABEL[studentStatus(r)]; }
   questionTitle(q: QuestionDto) {
-    return [q.topic, q.text].filter(Boolean).join(' — ') || null;
+    return [q.topic, this.summaryOf(q)].filter(Boolean).join(' — ') || null;
   }
 
   /* ---------- student selection ---------- */
@@ -707,13 +739,13 @@ export class ExamEntryComponent implements OnInit {
     const qs = this.questions();
     const invalid = invalidQuestions(qs, this.sheet());
     if (invalid.length > 0) {
-      this.error.set(`Geçersiz puan: ${invalid.map(i => qs[i].position).join(', ')}. soru`);
+      this.error.set(`Geçersiz puan: ${invalid.map(i => labelOf(qs[i])).join(', ')}. soru`);
       this.activate(invalid[0]);
       return;
     }
     const missing = unenteredChoices(qs, this.sheet());
     if (missing.length > 0) {
-      const list = missing.slice(0, 15).map(i => qs[i].position).join(', ') + (missing.length > 15 ? '…' : '');
+      const list = missing.slice(0, 15).map(i => labelOf(qs[i])).join(', ') + (missing.length > 15 ? '…' : '');
       if (!confirm(`${missing.length} seçenekli soru girilmedi (${list}). Bu sorular boş olarak kaydedilsin mi?`)) {
         this.activate(missing[0]);
         return;

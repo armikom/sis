@@ -3,7 +3,9 @@
  * The component is a thin signal/DOM layer over these functions.
  */
 import type { ExamAnswerDto, ExamResultDto, ExamResultRequest, QuestionDto, RosterEntryDto } from '../core/api.models';
+import { optionLabels, questionLabel } from '../shared/question-labels';
 
+/** Letters a..f have spoken feedback files (public/sounds); other labels only get the tone. */
 export const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'] as const;
 
 /** Entry state of one question. `points` is the raw text of the points field (accepts `,` or `.`). */
@@ -30,9 +32,14 @@ export function sortQuestions(questions: readonly QuestionDto[]): QuestionDto[] 
   return [...questions].sort((a, b) => a.position - b.position);
 }
 
+/** Option labels of a CHOICE question ("A".."D", "D"/"Y", "1"/"0"); empty for other types. */
 export function lettersFor(q: QuestionDto): string[] {
-  const n = Math.max(0, Math.min(LETTERS.length, q.choiceCount ?? 0));
-  return LETTERS.slice(0, n);
+  return optionLabels(q);
+}
+
+/** Number printed on the paper ("4", "3a"). */
+export function labelOf(q: QuestionDto): string {
+  return questionLabel(q);
 }
 
 /* ---------- points ---------- */
@@ -165,11 +172,11 @@ export type KeyOutcome =
   | { handled: false }
   | { handled: true; sheet: Sheet; save?: true; rejected?: number };
 
-/** A single Latin letter A–Z from `event.key`, upper-cased (Turkish 'ı'/'i' become 'I'), else null. */
+/** A single Latin letter A–Z or digit from `event.key`, upper-cased (Turkish 'ı'/'i' become 'I'), else null. */
 export function keyLetter(key: string): string | null {
   if (key.length !== 1) return null;
   const u = key.toUpperCase();
-  return /^[A-Z]$/.test(u) ? u : null;
+  return /^[A-Z0-9]$/.test(u) ? u : null;
 }
 
 /**
@@ -413,20 +420,20 @@ export function upsertResult(results: readonly ExamResultDto[], r: ExamResultDto
 
 /* ---------- live answer-key feedback ---------- */
 
-/** 'ok' = the entered letter matches the key; a letter = the correct choice to announce. */
-export type EntryFeedback = 'ok' | (typeof LETTERS)[number];
+/** 'ok' = the entered letter matches the key; a label = the correct choice to announce. */
+export type EntryFeedback = 'ok' | string;
 
 /**
  * Feedback for a CHOICE entry that just changed `before` → `after`: null when the question has no key,
- * nothing new was entered (clearing, re-entering the same value) or the key is not a valid letter.
+ * nothing new was entered (clearing, re-entering the same value) or the key is not one of the question's labels.
  * A blank entry counts as wrong.
  */
 export function entryFeedback(q: QuestionDto | undefined, before: Cell, after: Cell): EntryFeedback | null {
   if (!q || q.type !== 'CHOICE' || !after.entered) return null;
   if (before.entered && before.answer === after.answer) return null;
   const key = q.correctChoice?.toUpperCase();
-  if (!key || !(LETTERS as readonly string[]).includes(key)) return null;
-  return after.answer === key ? 'ok' : (key as EntryFeedback);
+  if (!key || !lettersFor(q).includes(key)) return null;
+  return after.answer === key ? 'ok' : key;
 }
 
 /* ---------- student search box keyboard ---------- */

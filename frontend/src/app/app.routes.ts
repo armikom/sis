@@ -55,6 +55,7 @@ export const routes: Routes = [
       { path: 'exams/:id', loadComponent: () => import('./exam/exam-detail.component').then(m => m.ExamDetailComponent) },
       { path: 'exams/:id/edit', loadComponent: () => import('./exam/exam-edit.component').then(m => m.ExamEditComponent) },
       { path: 'exams/:id/entry', loadComponent: () => import('./exam/exam-entry.component').then(m => m.ExamEntryComponent) },
+      { path: 'exams/:id/sheets', loadComponent: () => import('./exam/exam-sheets.component').then(m => m.ExamSheetsComponent) },
       { path: 'classrooms', loadComponent: () => import('./teacher/classrooms.component').then(m => m.ClassroomsComponent) },
       { path: 'sessions/new', loadComponent: () => import('./teacher/session-create.component').then(m => m.SessionCreateComponent) },
       { path: 'sessions/:id', loadComponent: () => import('./teacher/session-dashboard.component').then(m => m.SessionDashboardComponent) },

@@ -254,7 +254,7 @@ class ExamApiIntegrationTest {
     void definitionValidation() throws Exception {
         long courseId = createCourse();
         postExam(courseId, exam(" ", null, List.of(
-                q(null, "CHOICE", null, 0, 7, null),
+                q(null, "CHOICE", null, 0, 11, null),
                 q(null, "CHOICE", null, 1001, 4, "E"),
                 q(null, null, "x".repeat(121), 1, null, null))))
                 .andExpect(status().isBadRequest())
@@ -480,6 +480,132 @@ class ExamApiIntegrationTest {
                 q(c, "CHOICE", "T", 6, 2, null), q(open, "OPEN", null, 5, null, null),
                 q(free, "OPEN", null, 5, null, null)))).andExpect(status().isOk());
         assertTrue(results(examId).get(s2).get(c).get("points").isNull());
+    }
+
+    // ---- choice labels, groups, html ----------------------------------------------------------
+
+    static Map<String, Object> group(Long id, String ref, String text, String html) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", id);
+        m.put("ref", ref);
+        m.put("text", text);
+        m.put("html", html);
+        return m;
+    }
+
+    static Map<String, Object> grouped(Map<String, Object> q, String groupRef, String subLabel) {
+        q.put("groupRef", groupRef);
+        q.put("subLabel", subLabel);
+        return q;
+    }
+
+    static Map<String, Object> labelled(Map<String, Object> q, String labels) {
+        q.put("choiceLabels", labels);
+        q.put("choiceCount", null);
+        return q;
+    }
+
+    @Test
+    void choiceLabelsGroupsAndHtml() throws Exception {
+        long courseId = createCourse();
+        Map<String, Object> q1 = q(null, "CHOICE", "Giriş", 4, 4, "b");
+        q1.put("html", "<p>Soru <b>1</b></p>");
+        Map<String, Object> tf1 = grouped(labelled(q(null, "CHOICE", "Mantık", 2, null, "d"), "d / y"), "g1", null);
+        Map<String, Object> tf2 = grouped(labelled(q(null, "CHOICE", "Mantık", 2, null, "Y"), "DY"), "g1", null);
+        Map<String, Object> bin = grouped(labelled(q(null, "CHOICE", "Mantık", 2, null, "1"), "10"), "g1", "iii");
+        Map<String, Object> openQ = q(null, "OPEN", null, 10, null, null);
+        Map<String, Object> req = exam("Vize", "2026-11-20", List.of(q1, tf1, tf2, bin, openQ));
+        req.put("groups", List.of(group(null, "g1", "Aşağıdaki ifadeler için", "<p><i>D/Y</i></p>"),
+                group(null, "unused", "no questions", null)));
+        JsonNode created = createExam(courseId, req);
+        long examId = created.get("id").asLong();
+        JsonNode qs = created.get("questions");
+        assertEquals(List.of("1", "2a", "2b", "2iii", "3"), labelsOf(qs));
+        assertEquals("ABCD", qs.get(0).get("choiceLabels").asString());
+        assertEquals("<p>Soru <b>1</b></p>", qs.get(0).get("html").asString());
+        assertEquals("DY", qs.get(1).get("choiceLabels").asString());
+        assertEquals(2, qs.get(1).get("choiceCount").asInt());
+        assertEquals("D", qs.get(1).get("correctChoice").asString());
+        assertEquals("10", qs.get(3).get("choiceLabels").asString());
+        assertEquals("1", qs.get(3).get("correctChoice").asString());
+        assertTrue(qs.get(0).get("groupId").isNull());
+        long groupId = qs.get(1).get("groupId").asLong();
+        assertEquals(groupId, qs.get(3).get("groupId").asLong());
+        assertEquals(1, created.get("groups").size(), "a group without questions is dropped");
+        JsonNode g = created.get("groups").get(0);
+        assertEquals(groupId, g.get("id").asLong());
+        assertEquals(2, g.get("position").asInt());
+        assertEquals("Aşağıdaki ifadeler için", g.get("text").asString());
+        assertEquals("<p><i>D/Y</i></p>", g.get("html").asString());
+        assertEquals(List.of(qid(created, 1), qid(created, 2), qid(created, 3)),
+                json.convertValue(g.get("questionIds"), List.class).stream().map(x -> ((Number) x).longValue()).toList());
+
+        // Answers use the labels; anything else is rejected.
+        String s1 = studentNo();
+        long tfId = qid(created, 1), binId = qid(created, 3);
+        putResult(examId, s1, result(null, List.of(ans(tfId, "A", null)))).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.details['answers[0].answer']").exists());
+        JsonNode saved = saveResult(examId, s1, result(null, List.of(ans(qid(created, 0), "B", null),
+                ans(tfId, "y", null), ans(qid(created, 2), "Y", null), ans(binId, "1", null))));
+        Map<Long, JsonNode> a = answersById(saved);
+        assertEquals("Y", a.get(tfId).get("answer").asString());
+        assertEquals(0, a.get(tfId).get("points").asDouble(), EPS);
+        assertEquals(2, a.get(qid(created, 2)).get("points").asDouble(), EPS);
+        assertEquals(2, a.get(binId).get("points").asDouble(), EPS);
+
+        // Analysis and CSV carry the labels.
+        JsonNode analysis = getJson("/api/exams/" + examId + "/analysis");
+        assertEquals("2a", analysis.get("questions").get(1).get("label").asString());
+        assertEquals(List.of("D", "Y", ""), iterableNames(analysis.get("questions").get(1).get("choiceCounts")));
+        assertEquals(List.of("1", "0", ""), iterableNames(analysis.get("questions").get(3).get("choiceCounts")));
+        String csv = mvc.perform(get("/api/exams/" + examId + "/results.csv").with(t1())).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertTrue(csv.contains("S2a;S2a Puan;S2b;S2b Puan;S2iii;"), csv);
+
+        // Update: the group keeps its id, the html of q1 is cleared with "", a non-contiguous group is rejected.
+        Map<String, Object> u1 = q(qid(created, 0), "CHOICE", "Giriş", 4, 4, "B");
+        u1.put("html", "");
+        Map<String, Object> bad = exam("Vize", null, List.of(
+                grouped(labelled(q(tfId, "CHOICE", null, 2, null, "D"), "DY"), "g", null), u1,
+                grouped(labelled(q(binId, "CHOICE", null, 2, null, "1"), "10"), "g", null)));
+        bad.put("groups", List.of(group(groupId, "g", null, null)));
+        putExam(examId, bad).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.details['questions[2].groupRef']").exists());
+        Map<String, Object> ok = exam("Vize", null, List.of(u1,
+                grouped(labelled(q(tfId, "CHOICE", null, 2, null, "D"), "DY"), "g", "x"),
+                grouped(labelled(q(binId, "CHOICE", null, 2, null, "1"), "10"), "g", "y")));
+        ok.put("groups", List.of(group(groupId, "g", "Yeni metin", null)));
+        JsonNode updated = body(putExam(examId, ok).andExpect(status().isOk()));
+        assertEquals(List.of("1", "2x", "2y"), labelsOf(updated.get("questions")));
+        assertTrue(updated.get("questions").get(0).get("html").isNull());
+        assertEquals(groupId, updated.get("groups").get(0).get("id").asLong());
+        assertEquals("Yeni metin", updated.get("groups").get(0).get("text").asString());
+        assertTrue(updated.get("groups").get(0).get("html").isNull());
+        assertEquals("Y", answersById(findBy(getJson("/api/exams/" + examId + "/results"), "studentNo", s1))
+                .get(tfId).get("answer").asString(), "answers survive a regrouping");
+
+        // Dropping every group reference removes the group; the questions stay.
+        Map<String, Object> flat = exam("Vize", null, List.of(u1,
+                labelled(q(tfId, "CHOICE", null, 2, null, "D"), "DY"), labelled(q(binId, "CHOICE", null, 2, null, "1"), "10")));
+        JsonNode flatExam = body(putExam(examId, flat).andExpect(status().isOk()));
+        assertEquals(0, flatExam.get("groups").size());
+        assertEquals(List.of("1", "2", "3"), labelsOf(flatExam.get("questions")));
+
+        // Bad label sets.
+        postExam(courseId, exam("Bad", null, List.of(
+                labelled(q(null, "CHOICE", null, 1, null, null), "AAB"),
+                labelled(q(null, "CHOICE", null, 1, null, "C"), "DY"),
+                labelled(q(null, "CHOICE", null, 1, null, null), "A"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.details['questions[0].choiceLabels']").exists())
+                .andExpect(jsonPath("$.details['questions[1].correctChoice']").exists())
+                .andExpect(jsonPath("$.details['questions[2].choiceLabels']").exists());
+    }
+
+    static List<String> labelsOf(JsonNode questions) {
+        List<String> out = new ArrayList<>();
+        questions.forEach(q -> out.add(q.get("label").asString()));
+        return out;
     }
 
     static List<String> iterableNames(JsonNode obj) {

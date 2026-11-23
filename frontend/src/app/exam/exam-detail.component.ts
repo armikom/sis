@@ -6,7 +6,10 @@ import { ExamExportDialogComponent } from './exam-export-dialog.component';
 import { TopicChipsComponent } from '../shared/topics/topic-chips.component';
 import { apiTopics } from '../shared/topics/topic';
 import { textSegments } from '../shared/text-segments';
-import type { ExamAnalysisDto, ExamDto, ExamResultDto, RosterEntryDto } from '../core/api.models';
+import { RichHtmlComponent } from '../shared/rich-html.component';
+import { hasRichContent, richSummary } from '../shared/rich-html';
+import { optionLabels, questionLabel } from '../shared/question-labels';
+import type { ExamAnalysisDto, ExamDto, ExamGroupDto, ExamResultDto, RosterEntryDto } from '../core/api.models';
 import {
   barWidth, choiceBars, filterRows, formatExamDate, formatNumber, formatPercent, mergeRows, QUESTION_TYPE_LABELS,
   rateLevel, ResultFilter, ResultRow, sortByRateAsc, STATUS_LABELS, statusCounts,
@@ -14,7 +17,7 @@ import {
 
 @Component({
   selector: 'app-exam-detail',
-  imports: [RouterLink, ExamExportDialogComponent, TopicChipsComponent],
+  imports: [RouterLink, ExamExportDialogComponent, TopicChipsComponent, RichHtmlComponent],
   template: `
     <div class="container-wide">
       <nav class="breadcrumb" aria-label="Konum">
@@ -44,6 +47,7 @@ import {
           <div class="flex-gap actions">
             <a class="btn btn-primary btn-sm" [routerLink]="['/t/exams', id(), 'entry']">Cevap gir</a>
             <a class="btn btn-outline btn-sm" [routerLink]="['/t/exams', id(), 'edit']">Düzenle</a>
+            <a class="btn btn-outline btn-sm" [routerLink]="['/t/exams', id(), 'sheets']" title="Her öğrenci için soru, verilen cevap, doğru cevap ve puanları içeren yazdırılabilir döküm">Öğrenci dökümleri</a>
             <button type="button" class="btn btn-outline btn-sm" (click)="showExport.set(true)">Not dışa aktar</button>
             <a class="btn btn-outline btn-sm" [routerLink]="['/t/courses', e.courseId, 'learning']">Öğrenme durumu</a>
           </div>
@@ -87,6 +91,7 @@ import {
                       <td class="row-actions">
                         <a class="btn btn-outline btn-sm" [routerLink]="['/t/exams', id(), 'entry']" [queryParams]="{ student: r.studentNo }">{{ r.status === 'MISSING' ? 'Gir' : 'Düzenle' }}</a>
                         @if (r.status !== 'MISSING') {
+                          <a class="btn btn-outline btn-sm" [routerLink]="['/t/exams', id(), 'sheets']" [queryParams]="{ student: r.studentNo }" title="Öğrencinin sınav dökümü">Döküm</a>
                           <button class="btn-icon text-danger" (click)="deleteResult(r)" [attr.aria-label]="r.studentNo + ' sonucunu sil'" title="Sonucu sil">✕</button>
                         }
                       </td>
@@ -109,19 +114,29 @@ import {
             }
             <ol class="q-list">
               @for (q of questionRows(); track q.id) {
-                <li class="q-item">
+                @if (q.groupHead; as g) {
+                  <li class="q-group">
+                    <div class="q-meta"><strong>{{ g.label }}.</strong> <span class="text-sm text-secondary">Soru grubu · {{ g.questionIds.length }} alt soru</span></div>
+                    @if (g.html) { <app-rich-html [html]="g.html" /> }
+                    @else { @for (seg of segments(g.text); track $index) {
+                      @if (seg.code) { <pre class="q-code"><code>{{ seg.text }}</code></pre> } @else { <div class="q-text">{{ seg.text }}</div> }
+                    } }
+                  </li>
+                }
+                <li class="q-item" [class.q-sub]="q.groupId != null">
                   <div class="q-meta">
-                    <strong>{{ q.position }}.</strong>
-                    <span class="text-sm text-secondary">{{ typeLabels[q.type] ?? q.type }} · {{ fmt(q.maxPoints) }} puan</span>
+                    <strong>{{ q.printed }}.</strong>
+                    <span class="text-sm text-secondary">{{ typeLabels[q.type] ?? q.type }}@if (q.type === 'CHOICE') { ({{ optionLabels(q).join('/') }}) } · {{ fmt(q.maxPoints) }} puan</span>
                     @if (q.correctChoice) { <span class="badge badge-success">Anahtar: {{ q.correctChoice }}</span> }
                     @if (q.poolQuestionId) { <span class="text-sm text-secondary">Havuz #{{ q.poolQuestionId }}</span> }
                   </div>
                   @if (q.hasContent) {
                     <details class="q-content">
                       <summary>{{ q.summary || 'Soru içeriği' }}</summary>
-                      @for (seg of segments(q.text); track $index) {
+                      @if (q.hasHtml) { <app-rich-html [html]="q.html" /> }
+                      @else { @for (seg of segments(q.text); track $index) {
                         @if (seg.code) { <pre class="q-code"><code>{{ seg.text }}</code></pre> } @else { <div class="q-text">{{ seg.text }}</div> }
-                      }
+                      } }
                       @if (q.options?.length) {
                         <ul class="q-options">
                           @for (o of q.options; track o.letter) {
@@ -177,7 +192,7 @@ import {
                   <tbody>
                     @for (q of a.questions; track q.questionId) {
                       <tr>
-                        <td>{{ q.position }}</td>
+                        <td>{{ q.label ?? q.position }}</td>
                         <td>{{ typeLabels[q.type] ?? q.type }}</td>
                         <td>{{ q.topic ?? '—' }}</td>
                         <td class="num">{{ fmt(q.maxPoints) }}</td>
@@ -272,6 +287,8 @@ import {
     .publish { flex-wrap: wrap; margin-top: 6px; }
     .q-list { list-style: none; margin: 0; padding: 0; }
     .q-item { border: 1px solid var(--c-border); border-radius: var(--radius-md); background: var(--c-surface); padding: 10px 12px; margin-bottom: 8px; }
+    .q-item.q-sub { margin-left: 18px; }
+    .q-group { border-left: 4px solid var(--c-primary); background: var(--c-primary-light); border-radius: var(--radius-md); padding: 10px 12px; margin-bottom: 8px; }
     .q-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
     .q-text { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; }
     .q-content summary { cursor: pointer; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--c-text-secondary); }
@@ -331,12 +348,26 @@ export class ExamDetailComponent implements OnInit {
   readonly analysisError = signal('');
   readonly tab = signal<'results' | 'analysis' | 'questions'>('results');
   readonly publishing = signal(false);
-  readonly questionRows = computed(() => (this.exam()?.questions ?? []).map(q => ({
-    ...q,
-    topicList: apiTopics(q.topics),
-    summary: (q.text ?? '').trim().split('\n')[0].slice(0, 160),
-    hasContent: !!q.text?.trim() || !!q.explanation?.trim() || (q.options ?? []).some(o => o.text?.trim() || o.rationale?.trim()),
-  })));
+  readonly questionRows = computed(() => {
+    const groups = new Map((this.exam()?.groups ?? []).map(g => [g.id, g]));
+    let prev: number | null = null;
+    return [...(this.exam()?.questions ?? [])].sort((a, b) => a.position - b.position).map(q => {
+      const gid = q.groupId ?? null;
+      const groupHead: ExamGroupDto | null = gid != null && gid !== prev ? groups.get(gid) ?? null : null;
+      prev = gid;
+      const hasHtml = hasRichContent(q.html);
+      return {
+        ...q,
+        printed: questionLabel(q),
+        groupHead,
+        hasHtml,
+        topicList: apiTopics(q.topics),
+        summary: hasHtml ? richSummary(q.html) : (q.text ?? '').trim().split('\n')[0].slice(0, 160),
+        hasContent: hasHtml || !!q.text?.trim() || !!q.explanation?.trim() || (q.options ?? []).some(o => o.text?.trim() || o.rationale?.trim()),
+      };
+    });
+  });
+  readonly optionLabels = optionLabels;
   readonly segments = textSegments;
   readonly anyTopics = computed(() => this.questionRows().some(q => q.topicList.length > 0));
   readonly showExport = signal(false);
@@ -364,6 +395,7 @@ export class ExamDetailComponent implements OnInit {
   readonly topicsSorted = computed(() => sortByRateAsc(this.analysis()?.topics ?? [], t => t.successRate));
   readonly studentsSorted = computed(() => sortByRateAsc(this.analysis()?.students ?? [], s => s.percent));
   private readonly correctByQuestion = computed(() => new Map((this.exam()?.questions ?? []).map(q => [q.id, q.correctChoice])));
+  private readonly labelsByQuestion = computed(() => new Map((this.exam()?.questions ?? []).map(q => [q.id, optionLabels(q)])));
 
   readonly formatExamDate = formatExamDate;
   readonly fmt = formatNumber;
@@ -372,7 +404,7 @@ export class ExamDetailComponent implements OnInit {
   readonly level = rateLevel;
 
   choicesFor(questionId: number, counts: Record<string, number>) {
-    return choiceBars(counts, this.correctByQuestion().get(questionId) ?? null);
+    return choiceBars(counts, this.correctByQuestion().get(questionId) ?? null, this.labelsByQuestion().get(questionId) ?? []);
   }
 
   async ngOnInit() {

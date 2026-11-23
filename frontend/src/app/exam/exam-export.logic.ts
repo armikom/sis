@@ -1,4 +1,5 @@
 import type { ExamDto, ExamResultDto, QuestionDto, RosterEntryDto } from '../core/api.models';
+import { questionLabel } from '../shared/question-labels';
 
 /** One selectable CSV column. Keys are stable across exams so a saved layout can be reused. */
 export interface ExportColumn {
@@ -38,10 +39,11 @@ export function availableColumns(exam: ExamDto): ExportColumn[] {
   const hasChoice = exam.questions.some(q => q.type === 'CHOICE');
   const cols = BASE_COLUMNS.filter(c => hasChoice || !['correct', 'wrong', 'blank'].includes(c.key));
   for (const q of sortedQuestions(exam)) {
+    const n = questionLabel(q);
     if (q.type !== 'FREE') {
-      cols.push({ key: `q${q.position}a`, label: `S${q.position} cevap`, header: `S${q.position}`, group: 'question' });
+      cols.push({ key: `q${q.position}a`, label: `S${n} cevap`, header: `S${n}`, group: 'question' });
     }
-    cols.push({ key: `q${q.position}p`, label: `S${q.position} puan`, header: `S${q.position} Puan`, group: 'question' });
+    cols.push({ key: `q${q.position}p`, label: `S${n} puan`, header: `S${n} Puan`, group: 'question' });
   }
   return cols;
 }

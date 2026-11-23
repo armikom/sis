@@ -254,8 +254,8 @@ public class PoolExamController {
     private void addItem(long examId, int position, long questionId) {
         long itemId = db.sql("""
                 insert into exam_question (exam_id, position, type, text, topic, max_points, choice_count,
-                    correct_choice, pool_question_id, explanation)
-                select :e, :p, 'CHOICE', q.stem, left(c.title, 120), 1, 4, q.correct, q.id, q.explanation
+                    choice_labels, correct_choice, pool_question_id, explanation)
+                select :e, :p, 'CHOICE', q.stem, left(c.title, 120), 1, 4, 'ABCD', q.correct, q.id, q.explanation
                 from question q join chapter c on c.id = q.chapter_id where q.id = :q returning id""")
                 .param("e", examId).param("p", position).param("q", questionId).query(Long.class).single();
         copyOptions(itemId, questionId);

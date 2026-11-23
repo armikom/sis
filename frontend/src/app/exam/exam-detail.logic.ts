@@ -85,11 +85,12 @@ export function filterRows(rows: ResultRow[], filter: ResultFilter, query: strin
 
 export interface ChoiceBar { key: string; label: string; count: number; width: number; correct: boolean; }
 
-/** Per-choice distribution bars: letters sorted, blanks ("") last as "Boş". */
-export function choiceBars(counts: Record<string, number> | null, correct: string | null): ChoiceBar[] {
+/** Per-choice distribution bars: in label order (then any stray letters sorted), blanks ("") last as "Boş". */
+export function choiceBars(counts: Record<string, number> | null, correct: string | null, order: string[] = []): ChoiceBar[] {
   if (!counts) return [];
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
-  const keys = Object.keys(counts).sort((a, b) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)));
+  const rank = (k: string) => { const i = order.indexOf(k); return i < 0 ? order.length : i; };
+  const keys = Object.keys(counts).sort((a, b) => (a === '' ? 1 : b === '' ? -1 : (rank(a) - rank(b)) || a.localeCompare(b)));
   return keys.map(k => ({
     key: k,
     label: k === '' ? 'Boş' : k,

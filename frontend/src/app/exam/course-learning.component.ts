@@ -181,7 +181,7 @@ import { sortByRateAsc } from './exam-detail.logic';
                         @for (m of s.missedQuestions; track m.examId + '-' + m.position) {
                           <tr>
                             <td>{{ m.examTitle }}</td>
-                            <td class="num">{{ m.position }}</td>
+                            <td class="num">{{ m.label ?? m.position }}</td>
                             <td>{{ m.topic ?? '—' }}</td>
                             <td class="qtext">{{ m.text ?? '—' }}</td>
                             <td>{{ m.answer ? m.answer : 'Boş' }}</td>
