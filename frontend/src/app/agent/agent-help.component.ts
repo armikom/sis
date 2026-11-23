@@ -35,10 +35,11 @@ import { getItem, setItem } from '../core/storage';
     <p>
       <strong>MCP</strong> (Model Context Protocol) lets an AI app talk to this site. After you connect it, you do
       not copy and paste anything: the agent itself
-      @if (!teacher) {reads the chapter texts, asks you questions from the pool, checks your answers and
-        remembers what you studied.}
-      @else {reads the waiting questions, the participation numbers and the students' study notes, and can
-        approve questions or build an exam when you say so.}
+      @if (!teacher) {reads the chapter texts and topics, asks you questions from the pool, checks your answers,
+        goes through your exam results with you, shows your attendance and remembers what you studied.}
+      @else {reads the course for you — roster, chapter texts and topics, the question pool, exams and results,
+        attendance — answers your questions about it and, when you say so, changes it: edits a chapter, approves
+        questions, builds or edits an exam, enters results, opens an attendance session.}
     </p>
     @if (!teacher) { <p>
       The exams of a pool course are made of approved questions from its pool. So studying the pool with an agent is real
@@ -130,7 +131,23 @@ import { getItem, setItem } from '../core/storage';
 
     <h2 id="first">5. Your first session</h2>
     @if (!teacher) {
-      <p>Write in normal words. A short example:</p>
+      <p>Think of the agent as a tutor who has read your course. You say what you want in your own words — in
+        English or Turkish — and it chooses the right tools itself. It will not give you an answer before you choose
+        one, it does not write your questions for you, and everything it learns about you (weak topics, notes, what
+        you studied) is saved on the site, so you can continue in another app or on another day.</p>
+      <p>What people use it for:</p>
+      <ul>
+        <li><strong>Understanding a topic</strong> — have a chapter or a single topic explained in small parts, with
+          examples and check questions, in the language you prefer.</li>
+        <li><strong>Exam practice</strong> — answer pool questions by topic or by week; the exams are built from the
+          same pool.</li>
+        <li><strong>Learning from an exam</strong> — go through a published exam: what you missed, why the key is
+          right, which topics to read again, then practise exactly those topics.</li>
+        <li><strong>Keeping track</strong> — your progress, weak topics, exam totals next to the class, and your
+          attendance in one overview; a study plan for the week.</li>
+        <li><strong>Writing questions</strong> — feedback on your draft before you submit it.</li>
+      </ul>
+      <p>A short example:</p>
       <div class="card small chat">
         <p><strong>You:</strong> Show my progress and tell me what to study next.</p>
         <p><strong>Agent:</strong> <em>(calls get_progress)</em> You answered 4 of 11 questions in week 6. One answer
@@ -153,24 +170,49 @@ import { getItem, setItem } from '../core/storage';
         <li>"Let's review the questions I got wrong."</li>
         <li>"I wrote a question for week 5. Give me feedback, but do not write it for me."</li>
         <li>"Explain this answer again in Turkish."</li>
+        <li>"Go through my midterm: what did I miss and which topics should I read again?"</li>
+        <li>"How is my attendance? Which sessions did I miss?"</li>
       </ul>
-      <p>Ready prompts (if your app shows them): <code>study_chapter</code>, <code>quiz_me</code>,
-        <code>review_mistakes</code>, <code>improve_my_question</code>.</p>
+      <p>Ready prompts (if your app shows them): <code>study_plan</code>, <code>study_chapter</code>,
+        <code>quiz_me</code>, <code>review_mistakes</code>, <code>review_exam</code>,
+        <code>improve_my_question</code>.</p>
     }
     @else {
-      <p>Write in normal words, in Turkish or English. Examples:</p>
+      <p>Think of the agent as an assistant who has read your course and can also edit it. You say what you want in
+        your own words — Turkish or English — and it chooses the tools itself. It only reads until you ask for a
+        change; before every change it shows what it is about to do and waits for your yes. It cannot delete
+        people, exams or sessions; those stay on the web site.</p>
+      <p>What it is good for:</p>
+      <ul>
+        <li><strong>Course content</strong> — add or rewrite a chapter section (that is how topics are made),
+          link pool and exam questions to topics, see which topics the class finds hard.</li>
+        <li><strong>Question review</strong> — go through the waiting questions with the AI check and statistics,
+          find questions with a doubtful key or weak distractors, answer problem reports.</li>
+        <li><strong>Exams</strong> — build an exam from the pool or write one from scratch, add or edit questions,
+          options and rationales, write the explanations students see after publishing, tag questions with topics.</li>
+        <li><strong>Results</strong> — enter or correct result sheets, publish, read the analysis per question, topic
+          and student.</li>
+        <li><strong>Attendance</strong> — open and close a session, add late students by hand, decide flagged
+          records, get the attendance report of the course or of one student, export a session.</li>
+        <li><strong>Following students</strong> — participation, study notes, weak topics, attendance and exam
+          history of one student or of the whole class in one report.</li>
+      </ul>
+      <p>Examples:</p>
       <ul>
         <li>"7. haftanın bekleyen sorularını birlikte inceleyelim. Her biri için öneri ver, kararı ben vereyim."</li>
         <li>"Write a weekly report: who is behind, which chapters need more approved questions?"</li>
         <li>"Which approved questions may have a wrong key or a weak distractor?"</li>
-        <li>"What are the most common weak points in the students' study notes for week 6?"</li>
-        <li>"Ayşe Kaya'nın durumunu göster: soruları, cevapları, çalışma notları."</li>
+        <li>"Tag every question of Midterm 1 with a topic; show me the table before you save."</li>
+        <li>"Add a section on Karnaugh maps to chapter 6, in English and Turkish."</li>
+        <li>"Open today's attendance session for 15 minutes, then add these three late students."</li>
+        <li>"Ayşe Kaya'nın durumunu göster: soruları, cevapları, çalışma notları, yoklaması."</li>
         <li>"Build an exam with 3 questions from each week, 2 forms." (print it on the Exams page)</li>
       </ul>
-      <p>Ready prompts: <code>review_pending</code> and <code>weekly_report</code>.</p>
+      <p>Ready prompts: <code>review_pending</code>, <code>weekly_report</code>, <code>tag_exam_topics</code>.</p>
       <div class="note small">
-        The agent is told to show its plan and ask you before every change (approve, reject, edit, exam, import,
-        close a chapter). Read the plan before you say yes.
+        The agent is told to show its plan and ask you before every change (approve, reject, edit, exam, results,
+        attendance, import, chapters). Read the plan before you say yes; replacing a whole exam or removing an exam
+        question also deletes the stored answers.
       </div>
     }
 
@@ -283,10 +325,11 @@ import { getItem, setItem } from '../core/storage';
     <p>
       <strong>MCP</strong> (Model Context Protocol), bir yapay zekâ uygulamasının bu siteyle konuşmasını sağlar.
       Bağladıktan sonra hiçbir şeyi kopyalayıp yapıştırmazsınız; ajan
-      @if (!teacher) {bölüm metinlerini kendisi okur, havuzdan size soru sorar, cevabınızı kontrol eder ve
-        neler çalıştığınızı hatırlar.}
-      @else {bekleyen soruları, katılım sayılarını ve öğrencilerin çalışma notlarını okur; siz söyleyince
-        soru onaylar ya da sınav hazırlar.}
+      @if (!teacher) {bölüm metinlerini ve konuları kendisi okur, havuzdan size soru sorar, cevabınızı kontrol
+        eder, sınav sonucunuzu sizinle birlikte inceler, yoklamanızı gösterir ve neler çalıştığınızı hatırlar.}
+      @else {dersi sizin için okur — liste, bölüm metinleri ve konular, soru havuzu, sınavlar ve sonuçlar,
+        yoklama — sorularınızı cevaplar ve siz söyleyince değiştirir: bölüm düzenler, soru onaylar, sınav hazırlar
+        ya da düzenler, sonuç girer, yoklama oturumu açar.}
     </p>
     @if (!teacher) { <p>
       Havuz kullanan derslerin sınavları o havuzdaki onaylı sorulardan oluşur. Yani havuzu ajanla çalışmak gerçek sınav
@@ -378,7 +421,23 @@ import { getItem, setItem } from '../core/storage';
 
     <h2 id="first">5. İlk oturum</h2>
     @if (!teacher) {
-      <p>Normal cümlelerle yazın; Türkçe de olur. Kısa bir örnek:</p>
+      <p>Ajanı dersinizi okumuş bir çalışma arkadaşı gibi düşünün. Ne istediğinizi kendi cümlelerinizle — Türkçe ya
+        da İngilizce — söylersiniz, doğru aracı kendisi seçer. Siz şık seçmeden cevabı söylemez, sorularınızı sizin
+        yerinize yazmaz; sizinle ilgili öğrendiği her şey (zayıf konular, notlar, ne çalıştığınız) sitede saklanır,
+        başka bir uygulamada ya da başka bir gün kaldığınız yerden devam edersiniz.</p>
+      <p>Ne işe yarar:</p>
+      <ul>
+        <li><strong>Bir konuyu anlamak</strong> — bir bölümü ya da tek bir konuyu küçük parçalarla, örneklerle ve
+          kontrol sorularıyla, istediğiniz dilde anlattırmak.</li>
+        <li><strong>Sınava hazırlanmak</strong> — havuz sorularını konuya ya da haftaya göre çözmek; sınavlar aynı
+          havuzdan hazırlanıyor.</li>
+        <li><strong>Sınavdan öğrenmek</strong> — yayınlanmış bir sınavı baştan sona geçmek: neyi kaçırdınız, doğru
+          cevap neden doğru, hangi konuları yeniden okumalısınız; sonra tam o konulardan pratik.</li>
+        <li><strong>Takip</strong> — ilerlemeniz, zayıf konularınız, sınıfın yanında sınav puanlarınız ve yoklamanız
+          tek bakışta; haftalık çalışma planı.</li>
+        <li><strong>Soru yazmak</strong> — göndermeden önce taslağınıza geri bildirim.</li>
+      </ul>
+      <p>Kısa bir örnek:</p>
       <div class="card small chat">
         <p><strong>Siz:</strong> İlerlememi göster, sırada ne var?</p>
         <p><strong>Ajan:</strong> <em>(get_progress)</em> 6. haftada 11 sorudan 4'ünü cevapladın, biri yanlış.
@@ -400,24 +459,49 @@ import { getItem, setItem } from '../core/storage';
         <li>"Yanlış yaptığım soruları tekrar edelim."</li>
         <li>"5. hafta için bir soru yazdım; geri bildirim ver ama benim yerime yazma."</li>
         <li>"Bu cevabı Türkçe olarak yeniden açıkla."</li>
+        <li>"Vize sınavımı birlikte geçelim: neleri kaçırdım, hangi konuları yeniden okumalıyım?"</li>
+        <li>"Yoklamam nasıl? Hangi derslere gelmedim?"</li>
       </ul>
-      <p>Hazır komutlar (uygulamanız gösteriyorsa): <code>study_chapter</code>, <code>quiz_me</code>,
-        <code>review_mistakes</code>, <code>improve_my_question</code>.</p>
+      <p>Hazır komutlar (uygulamanız gösteriyorsa): <code>study_plan</code>, <code>study_chapter</code>,
+        <code>quiz_me</code>, <code>review_mistakes</code>, <code>review_exam</code>,
+        <code>improve_my_question</code>.</p>
     }
     @else {
-      <p>Normal cümlelerle, Türkçe ya da İngilizce yazın. Örnekler:</p>
+      <p>Ajanı dersinizi okumuş ve düzenleyebilen bir asistan gibi düşünün. Ne istediğinizi kendi cümlelerinizle —
+        Türkçe ya da İngilizce — söylersiniz, araçları kendisi seçer. Siz değişiklik istemedikçe yalnızca okur; her
+        değişiklikten önce ne yapacağını gösterir ve onayınızı bekler. Kişi, sınav ya da oturum silemez; bunlar web
+        sitesinde kalır.</p>
+      <p>Ne işe yarar:</p>
+      <ul>
+        <li><strong>Ders içeriği</strong> — bölüm metnine yeni bir kısım eklemek ya da yazdırmak (konular böyle
+          oluşur), havuz ve sınav sorularını konulara bağlamak, sınıfın hangi konularda zorlandığını görmek.</li>
+        <li><strong>Soru inceleme</strong> — bekleyen soruları yapay zekâ kontrolü ve istatistiklerle gözden
+          geçirmek, anahtarı şüpheli ya da çeldiricisi zayıf soruları bulmak, bildirimleri yanıtlamak.</li>
+        <li><strong>Sınav</strong> — havuzdan sınav hazırlamak ya da sıfırdan yazmak, soru/şık/gerekçe eklemek ve
+          düzenlemek, yayından sonra öğrencinin göreceği açıklamaları yazmak, soruları konularla etiketlemek.</li>
+        <li><strong>Sonuçlar</strong> — sonuç kâğıtlarını girmek ya da düzeltmek, yayınlamak, soru/konu/öğrenci
+          bazında analizi okumak.</li>
+        <li><strong>Yoklama</strong> — oturum açıp kapatmak, geç gelenleri elle eklemek, işaretli kayıtlara karar
+          vermek, dersin ya da bir öğrencinin yoklama raporunu almak, oturumu dışa aktarmak.</li>
+        <li><strong>Öğrenci takibi</strong> — bir öğrencinin ya da tüm sınıfın katılımı, çalışma notları, zayıf
+          konuları, yoklaması ve sınav geçmişi tek raporda.</li>
+      </ul>
+      <p>Örnekler:</p>
       <ul>
         <li>"7. haftanın bekleyen sorularını birlikte inceleyelim. Her biri için öneri ver, kararı ben vereyim."</li>
         <li>"Haftalık rapor yaz: kim geride, hangi bölümlerde onaylı soru az?"</li>
         <li>"Hangi onaylı soruların anahtarı yanlış ya da çeldiricisi zayıf olabilir?"</li>
-        <li>"6. hafta için öğrenci notlarında en sık geçen zayıf konular neler?"</li>
-        <li>"Ayşe Kaya'nın durumunu göster: soruları, cevapları, çalışma notları."</li>
+        <li>"Vize 1'in her sorusunu bir konuyla etiketle; kaydetmeden önce tabloyu göster."</li>
+        <li>"6. bölüme Karnaugh haritaları diye bir kısım ekle, İngilizce ve Türkçe."</li>
+        <li>"Bugünün yoklama oturumunu 15 dakikalığına aç, sonra şu üç geç gelen öğrenciyi ekle."</li>
+        <li>"Ayşe Kaya'nın durumunu göster: soruları, cevapları, çalışma notları, yoklaması."</li>
         <li>"Her haftadan 3 soruyla 2 formlu bir sınav hazırla." (çıktıyı Exams sayfasından alın)</li>
       </ul>
-      <p>Hazır komutlar: <code>review_pending</code> ve <code>weekly_report</code>.</p>
+      <p>Hazır komutlar: <code>review_pending</code>, <code>weekly_report</code>, <code>tag_exam_topics</code>.</p>
       <div class="note small">
-        Ajana her değişiklikten önce (onay, ret, düzenleme, sınav, liste aktarma, bölüm kapatma) planını gösterip
-        size sorması söylenmiştir. "Evet" demeden önce planı okuyun.
+        Ajana her değişiklikten önce (onay, ret, düzenleme, sınav, sonuç, yoklama, liste aktarma, bölüm) planını
+        gösterip size sorması söylenmiştir. "Evet" demeden önce planı okuyun; bir sınavı bütünüyle değiştirmek ya da
+        bir sınav sorusunu silmek kayıtlı cevapları da siler.
       </div>
     }
 
