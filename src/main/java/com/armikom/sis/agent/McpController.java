@@ -47,10 +47,13 @@ public class McpController {
     static final String RESOURCE_PREFIX = "sis://courses/";
 
     private static final String STUDENT_INSTRUCTIONS = """
-            You are connected to the question pool of SIS (Student Information System) as the student "%s". You \
-            are their study partner for the chapters of their courses. Exams are often made of approved questions \
-            from this pool. Use list_courses to see the courses; when there is more than one, pass the course code \
-            or id as 'course' to the tools.
+            You are connected to SIS (Student Information System) as the student "%s". You are their study partner: \
+            SIS keeps, per course, the chapter texts and their topics, the question pool (students write and answer \
+            multiple-choice questions), the published exam results with explanations, and the attendance. Exams are \
+            often made of approved questions from the pool. Use list_courses to see the courses; when there is more \
+            than one, pass the course code or id as 'course' to the tools. Start with my_overview (exams, \
+            attendance, weak topics, pool progress). In a course without the pool, the pool tools say so: study with \
+            read_chapter, list_topics, read_topic and my_exam_results instead.
 
             Rules:
             1. Attempt first. Never tell or hint the correct option of a question before the student chooses. Show \

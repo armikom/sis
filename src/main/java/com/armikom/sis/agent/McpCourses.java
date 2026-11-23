@@ -9,11 +9,11 @@ import java.util.Locale;
 import java.util.stream.Collectors;
 
 /**
- * Which course an MCP call is about. A person's MCP courses are the not archived courses with a live enrollment:
- * every course where they are staff (exams, attendance and the roster do not need the pool), and the pool-enabled
- * ones where they are a student. The optional {@code course} argument (code or id) picks one; without it the only
- * course is the default, otherwise the tool fails with a message that asks for {@code course}. System admins may
- * address any course by id or code.
+ * Which course an MCP call is about. A person's MCP courses are the not archived courses with a live enrollment
+ * (any role: exams, attendance, topics and the roster do not need the question pool; the pool tools check the pool
+ * switch themselves). The optional {@code course} argument (code or id) picks one; without it the only course is
+ * the default, otherwise the tool fails with a message that asks for {@code course}. System admins may address any
+ * course by id or code.
  */
 @Component
 public class McpCourses {
@@ -40,7 +40,6 @@ public class McpCourses {
                 select c.id, c.code, c.name, c.term, c.language, e.role, c.pool_enabled
                 from enrollment e join course c on c.id = e.course_id
                 where e.person_id = :p and e.deleted_at is null and c.archived_at is null
-                  and (c.pool_enabled or e.role <> 'STUDENT')
                 order by c.term desc, c.code""").param("p", person.personId())
                 .query((rs, i) -> new Ref(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4),
                         rs.getString(5), rs.getString(6), person.systemAdmin() || !"STUDENT".equals(rs.getString(6)),
@@ -67,7 +66,7 @@ public class McpCourses {
             if (mine.isEmpty()) {
                 throw new IllegalArgumentException(person.systemAdmin()
                         ? "Pass the argument 'course' (course code or id)."
-                        : "You are not in any course (students need a course with the question pool).");
+                        : "You are not in any course.");
             }
             throw new IllegalArgumentException("You are in more than one course: "
                     + mine.stream().map(Ref::label).collect(Collectors.joining(", "))

@@ -183,8 +183,9 @@ import { getItem, setItem } from '../core/storage';
     @if (!teacher) { <table>
       <thead><tr><th>Area</th><th>Tools</th></tr></thead>
       <tbody>
-        <tr><td>Courses</td><td><code>list_courses</code>, <code>whoami</code></td></tr>
-        <tr><td>Learn</td><td><code>read_chapter</code>, <code>list_chapters</code></td></tr>
+        <tr><td>Courses</td><td><code>list_courses</code>, <code>whoami</code>, <code>my_overview</code></td></tr>
+        <tr><td>Learn</td><td><code>read_chapter</code>, <code>list_chapters</code>, <code>list_topics</code>, <code>read_topic</code></td></tr>
+        <tr><td>Exams, attendance</td><td><code>my_exam_results</code>, <code>review_topics</code>, <code>my_attendance</code></td></tr>
         <tr><td>Answer new questions</td><td><code>next_question</code> → <code>answer_question</code> (first answer, counts)</td></tr>
         <tr><td>Practise again</td><td><code>next_review_question</code> → <code>practice_answer</code> (does not change the first answer)</td></tr>
         <tr><td>Progress</td><td><code>get_progress</code>, <code>update_study_state</code>, <code>log_study_session</code></td></tr>
@@ -429,8 +430,9 @@ import { getItem, setItem } from '../core/storage';
     @if (!teacher) { <table>
       <thead><tr><th>Alan</th><th>Araçlar</th></tr></thead>
       <tbody>
-        <tr><td>Dersler</td><td><code>list_courses</code>, <code>whoami</code></td></tr>
-        <tr><td>Öğrenme</td><td><code>read_chapter</code>, <code>list_chapters</code></td></tr>
+        <tr><td>Dersler</td><td><code>list_courses</code>, <code>whoami</code>, <code>my_overview</code></td></tr>
+        <tr><td>Öğrenme</td><td><code>read_chapter</code>, <code>list_chapters</code>, <code>list_topics</code>, <code>read_topic</code></td></tr>
+        <tr><td>Sınav, yoklama</td><td><code>my_exam_results</code>, <code>review_topics</code>, <code>my_attendance</code></td></tr>
         <tr><td>Yeni soru cevaplama</td><td><code>next_question</code> → <code>answer_question</code> (ilk cevap, sayılır)</td></tr>
         <tr><td>Tekrar</td><td><code>next_review_question</code> → <code>practice_answer</code> (ilk cevabı değiştirmez)</td></tr>
         <tr><td>İlerleme</td><td><code>get_progress</code>, <code>update_study_state</code>, <code>log_study_session</code></td></tr>

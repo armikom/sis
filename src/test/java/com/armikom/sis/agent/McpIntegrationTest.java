@@ -245,7 +245,7 @@ class McpIntegrationTest extends ApiTestSupport {
 
         Set<String> shared = Set.of("list_courses", "whoami", "list_chapters", "read_chapter", "list_questions",
                 "get_question", "get_comments", "post_comment");
-        Set<String> studentOnly = Set.of("get_progress", "next_question", "answer_question", "practice_answer",
+        Set<String> studentOnly = Set.of("get_progress", "my_overview", "my_attendance", "next_question", "answer_question", "practice_answer",
                 "submit_question", "flag_question", "my_questions", "update_study_state", "log_study_session");
         Set<String> staffOnly = Set.of("class_overview", "student_detail", "decide_question", "edit_question",
                 "list_flags", "resolve_flag", "hide_comment", "set_chapter_open", "create_exam", "get_exam",
@@ -283,8 +283,12 @@ class McpIntegrationTest extends ApiTestSupport {
         User staffNoPool = newStaff();   // staff of a seed course that has no pool
         assertTrue(toolNames(token(staffNoPool)).containsAll(staffOnly));
 
-        // A student whose only course has no pool sees only the shared kind ("ALL"), no student or staff tools.
-        User nobody = newStudent(newCourse(staffNoPool, false, 2));
+        // A student whose only course has no pool still sees the student tools (exams, attendance, topics).
+        assertTrue(toolNames(token(newStudent(newCourse(staffNoPool, false, 2)))).containsAll(studentOnly));
+
+        // A person in no course at all sees only the shared kind ("ALL"), no student or staff tools.
+        User nobody = userOf(tx.execute(st -> persons.save(new com.armikom.sis.core.person.Person(
+                "Kimse " + next(), personService.newStaffNickname()))));
         Set<String> none = toolNames(token(nobody));
         for (String t : studentOnly) assertFalse(none.contains(t));
         for (String t : staffOnly) assertFalse(none.contains(t));
@@ -304,12 +308,15 @@ class McpIntegrationTest extends ApiTestSupport {
         doPost(f.owner(), "/api/courses/" + archived.id() + "/archive", null).andExpect(status().isOk());
         fx();   // someone else's course
 
+        // The student sees both live courses (pool flag tells them apart), not the archived one or someone else's.
         JsonNode courses = call(token(f.student()), "list_courses", NO_ARGS);
-        assertEquals(1, courses.size(), courses.toString());
-        assertEquals(f.course().id(), courses.get(0).get("id").asLong());
-        assertEquals(f.course().code(), courses.get(0).get("code").asString());
-        assertEquals("STUDENT", courses.get(0).get("role").asString());
-        assertFalse(courses.get(0).get("staff").asBoolean());
+        assertEquals(2, courses.size(), courses.toString());
+        for (JsonNode c : courses) {
+            assertEquals("STUDENT", c.get("role").asString());
+            assertFalse(c.get("staff").asBoolean());
+            assertTrue(c.get("id").asLong() == f.course().id() || c.get("id").asLong() == noPool.id());
+            assertEquals(c.get("id").asLong() == f.course().id(), c.get("pool").asBoolean());
+        }
 
         // Staff see every live course of theirs (the seed course of newStaff, the pool course and the one without
         // the pool), not the archived one.
@@ -425,11 +432,58 @@ class McpIntegrationTest extends ApiTestSupport {
         String error = callError(token(nobody), "list_chapters", NO_ARGS);
         assertTrue(error.contains("pool is not enabled"), error);
         assertEquals(1, call(token(nobody), "list_courses", NO_ARGS).size());
-        // A student in no pool course has no course at all.
+        // A student in a course without the pool: the course is listed, pool tools explain, my_overview works.
         User lonely = newStudent(newCourse(nobody, false, 2));
         error = callError(token(lonely), "list_chapters", NO_ARGS);
-        assertTrue(error.contains("not in any course"), error);
-        assertEquals(0, call(token(lonely), "list_courses", NO_ARGS).size());
+        assertTrue(error.contains("pool is not enabled"), error);
+        assertEquals(1, call(token(lonely), "list_courses", NO_ARGS).size());
+        JsonNode overview = call(token(lonely), "my_overview", NO_ARGS);
+        assertFalse(overview.get("course").get("pool").asBoolean());
+        assertTrue(overview.get("pool").isString());
+        assertEquals(0, overview.get("attendance").get("sessions").asInt());
+    }
+
+    @Test
+    void studentOverviewAndAttendance() throws Exception {
+        Fx f = fx();
+        String st = token(f.student());
+        // Two opened sessions; the student is marked present in one.
+        long s1 = openedSession(f, "Week 1");
+        long s2 = openedSession(f, "Week 2");
+        doPost(f.owner(), "/api/sessions/" + s1 + "/attendances/manual",
+                Map.of("studentNo", f.student().studentNo(), "note", "ok")).andExpect(status().isCreated());
+
+        JsonNode att = call(st, "my_attendance", NO_ARGS);
+        assertEquals(2, att.get("sessions").asInt());
+        assertEquals(1, att.get("present").asInt());
+        assertEquals(1, att.get("absent").asInt());
+        assertEquals(50.0, att.get("present_pct").asDouble(), 1e-6);
+        assertEquals(s2, att.get("missed").get(0).get("sessionId").asLong());
+        // Students get present/absent only, never flags or latencies.
+        assertFalse(att.get("rows").get(0).has("flags"));
+
+        JsonNode overview = call(st, "my_overview", NO_ARGS);
+        assertEquals(f.course().code(), overview.get("course").get("code").asString());
+        assertTrue(overview.get("course").get("pool").asBoolean());
+        assertEquals(1, overview.get("attendance").get("present").asInt());
+        assertFalse(overview.get("attendance").has("rows"));
+        assertEquals(0, overview.get("exams").size());
+        assertEquals(1, overview.get("pool").get("totals").get("can_answer").asInt());
+        assertTrue(overview.get("pool").has("suggestion"));
+
+        String text = result(st, "prompts/get", Map.of("name", "study_plan", "arguments", Map.of()))
+                .get("messages").get(0).get("content").get("text").asString();
+        assertTrue(text.contains("my_overview"));
+        // Staff do not see the student tool.
+        rpc(token(f.owner()), "tools/call", Map.of("name", "my_overview", "arguments", in(f)))
+                .andExpect(jsonPath("$.error.code").value(-32602));
+    }
+
+    long openedSession(Fx f, String title) throws Exception {
+        long id = body(doPost(f.owner(), "/api/sessions", Map.of("courseId", f.course().id(), "title", title))
+                .andExpect(status().isCreated())).get("id").asLong();
+        doPost(f.owner(), "/api/sessions/" + id + "/open", null).andExpect(status().isOk());
+        return id;
     }
 
     // ---- attempt first and first answer ---------------------------------------------------------

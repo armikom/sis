@@ -72,6 +72,19 @@ final class McpPrompts {
                             options, wait for my choice and send it with answer_question. When no new questions are \
                             left, use next_review_question with the same topic and practice_answer.
                             4. At the end, save my weak points with update_study_state and write log_study_session."""),
+            new Prompt("study_plan", "Make my study plan",
+                    "Look at exams, attendance, weak topics and pool progress, then plan the week.", false,
+                    List.of(COURSE), """
+                            Make me a study plan{course_text}.
+                            1. Call my_overview. Tell me shortly where I stand: exam totals next to the class, missed \
+                            sessions, weak topics, and (if the course has the pool) how many questions I still have \
+                            to answer or write.
+                            2. For the weak topics call read_topic and explain the main idea of each in a few \
+                            sentences; link them to the exam questions I missed (my_exam_results with the exam id).
+                            3. Propose a plan for the next 7 days: which topic to read, which questions to practise \
+                            (next_question with topic, next_review_question), and when to write my own questions. \
+                            Keep it short and realistic. Ask me to confirm, then save the weak points with \
+                            update_study_state and write log_study_session."""),
             new Prompt("review_pending", "Review waiting questions",
                     "Go through the waiting questions with the AI check and statistics.", true,
                     List.of(new Arg("week", "Chapter (week) number (empty = all chapters)", false), COURSE), """

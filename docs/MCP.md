@@ -47,10 +47,10 @@ so on.
 
 ## Courses
 
-- A person's **MCP courses** are the not archived courses with a live enrollment: every course where they are staff
-  (exams, attendance and the roster do not need the pool) and the `pool_enabled` ones where they are a student.
-  `list_courses` shows them with the role and the `pool` flag; pool tools in a course without the pool fail with
-  "The question pool is not enabled for this course.".
+- A person's **MCP courses** are the not archived courses with a live enrollment, any role (exams, attendance,
+  topics and the roster do not need the pool). `list_courses` shows them with the role and the `pool` flag; pool
+  tools in a course without the pool fail with "The question pool is not enabled for this course." (409 for staff,
+  404 for students on the REST API, the same sentence).
 - Every tool takes an optional `course` argument: the course code (spaces and case ignored, e.g. `SENG403`) or the
   course id. Without it, the person's only pool course is used; with two or more the tool returns an error that
   lists the courses and asks for `course`. A code that exists in several terms needs the id.
@@ -95,6 +95,8 @@ so on.
 
 | Tool | Arguments | Notes |
 |---|---|---|
+| `my_overview` | — | Start of a session: `course` (with `pool`), `exams` (published totals), `attendance` (`sessions`, `present`, `absent`, `present_pct`, `missed`), `weak_topics` (5), `pool` (totals, suggestion, recent sessions; a sentence when the pool is off) |
+| `my_attendance` | — | Own attendance: totals, `missed`, `rows` per opened session (`sessionId`, `title`, `date`, `present`); never flags or latencies |
 | `get_progress` | — | `weak_topics` (top 5 of `review_topics`); per chapter: `can_answer`, `answered`, `first_try_correct`, `not_answered`, `to_review`, `practice_answers`, `my_questions`, `my_approved`, `questions_to_write`, `study_status`, `confidence`, `notes`; totals; last 5 diary entries; `suggestion` |
 | `next_question` | `chapter?`, `topic?` (id) | Random approved, unanswered, not own; lowest chapter first; `topic` = only questions linked to it. No key. |
 | `answer_question` | `question_id`, `selected` | Writes `question_attempt` (first answer). Refuses if already answered. |
@@ -231,7 +233,7 @@ Notes:
 - Student prompts: `study_chapter(week, course?)`, `quiz_me(week?, count?, course?)`, `review_mistakes(week?,
   course?)`, `improve_my_question(week, course?)` (`week` = chapter number), `review_exam(exam?, course?)` (missed
   topics of a published exam: `my_exam_results` → `read_topic` → explain with options/rationales → practise with
-  `next_question(topic)`).
+  `next_question(topic)`), `study_plan(course?)` (`my_overview` → weak topics → a 7-day plan).
 - Staff prompts: `review_pending(week?, course?)`, `weekly_report(course?)`, `tag_exam_topics(exam?, course?)`
   (propose topics for every question of an exam, link them with `set_exam_question_topics` after approval).
 - Resources: `sis://courses/<courseId>/chapters/<number>/<en|tr>` (Markdown) for every chapter of the person's pool
@@ -242,7 +244,8 @@ Notes:
 `initialize` returns `instructions` that the client gives to the model (staff text, student text, or both for a
 person who is staff in one course and student in another):
 
-- **Students:** never reveal or hint the key before the student chooses; never choose for the student; start with
+- **Students:** start with `my_overview`; in a course without the pool study with the chapter texts, topics and exam
+  results; never reveal or hint the key before the student chooses; never choose for the student; start with
   `get_progress`, save weak points, end with `log_study_session`; give feedback on questions but do not write them;
   ask before posting, flagging or submitting; no lab work; simple English, Turkish when the student writes Turkish;
   staff can read the study state.

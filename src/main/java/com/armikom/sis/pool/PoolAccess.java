@@ -43,12 +43,13 @@ public class PoolAccess {
         return access.isStaff(courseId);
     }
 
+    /** Staff get 409, students 404 (API-POOL.md); both messages say why, so an MCP agent can explain it. */
     private void requireEnabled(Course c) {
         if (!c.isPoolEnabled()) {
             if (access.isStaff(c.getId())) {
                 throw PoolException.conflict("The question pool is not enabled for this course.");
             }
-            throw PoolException.notFound("Not found.");
+            throw PoolException.notFound("The question pool is not enabled for this course.");
         }
     }
 
