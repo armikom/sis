@@ -13,6 +13,8 @@ import {
   entryFeedback, sheetSignature, sortQuestions, studentStatus, summarize, unenteredChoices, updateCell, upsertResult,
 } from './exam-entry.logic';
 import { EntrySounds } from './entry-sounds';
+import { getItem, removeItem, setItem } from '../core/storage';
+import { type Drafts, draftKey, draftSheet, makeDraft, parseDrafts, serializeDrafts, withDraft } from './exam-entry-draft';
 
 const NUM = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 });
 const PCT = new Intl.NumberFormat('tr-TR', { style: 'percent', maximumFractionDigits: 1 });
@@ -61,10 +63,13 @@ const UNSAVED = 'Kaydedilmemiş değişiklikler var. Kaydetmeden devam edilsin m
                       [attr.aria-current]="r.studentNo === current() ? 'true' : null">
                       <span class="sno text-mono">{{ r.studentNo }}</span>
                       <span class="sname">{{ r.fullName || '—' }}@if (!r.inRoster) { <span class="text-secondary" title="Ders listesinde yok"> *</span> }</span>
-                      @if (r.result) {
-                        <span class="badge" [class.badge-warning]="status(r) === 'partial'" [class.badge-success]="status(r) === 'complete'"
-                          [attr.title]="statusLabel(r)">@if (status(r) === 'partial') { Eksik · }{{ num(r.result.totalPoints) }}</span>
-                      } @else { <span></span> }
+                      <span class="badges">
+                        @if (hasDraft(r.studentNo)) { <span class="badge badge-info" title="Kaydedilmemiş taslak">Taslak</span> }
+                        @if (r.result) {
+                          <span class="badge" [class.badge-warning]="status(r) === 'partial'" [class.badge-success]="status(r) === 'complete'"
+                            [attr.title]="statusLabel(r)">@if (status(r) === 'partial') { Eksik · }{{ num(r.result.totalPoints) }}</span>
+                        }
+                      </span>
                     </button>
                   </li>
                 } @empty {
@@ -101,6 +106,15 @@ const UNSAVED = 'Kaydedilmemiş değişiklikler var. Kaydetmeden devam edilsin m
                   <button type="button" class="btn btn-primary btn-sm" (click)="save()" [disabled]="saving()">{{ saving() ? 'Kaydediliyor…' : 'Kaydet' }}</button>
                 </div>
               </div>
+
+              @if (restored(); as rs) {
+                <div class="alert alert-info draft-note" role="status">
+                  <span>Kaydedilmemiş taslak geri yüklendi; kaydetmeyi unutmayın.
+                    @if (rs.changed) { <strong>Bu öğrencinin sonucu taslaktan sonra değişti; kaydederseniz taslaktaki cevaplar geçerli olur.</strong> }
+                  </span>
+                  <button type="button" class="btn btn-outline btn-sm" (click)="discardDraft()" [disabled]="saving()">Taslağı at</button>
+                </div>
+              }
 
               @if (liveSummary(); as s) {
                 <div class="result card" role="status" [class.unsaved]="dirty()">
@@ -211,6 +225,14 @@ const UNSAVED = 'Kaydedilmemiş değişiklikler var. Kaydetmeden devam edilsin m
             } @else {
               <div class="card pick">
                 <p>Cevaplarını girmek için listeden bir öğrenci seçin.</p>
+                @if (draftRows().length > 0) {
+                  <div class="draft-list">
+                    <p class="text-sm">Kaydedilmemiş taslağı olan öğrenciler:</p>
+                    @for (d of draftRows(); track d.studentNo) {
+                      <button type="button" class="btn btn-outline btn-sm" (click)="selectStudent(d.studentNo)">{{ d.studentNo }} {{ d.fullName }}</button>
+                    }
+                  </div>
+                }
                 @if (nextRow(); as n) {
                   <button #startBtn type="button" class="btn btn-primary" (click)="selectStudent(n.studentNo)">Başla: {{ n.studentNo }} {{ n.fullName }} →</button>
                 }
@@ -303,6 +325,10 @@ const UNSAVED = 'Kaydedilmemiş değişiklikler var. Kaydetmeden devam edilsin m
     .pts { width: 6em; padding: 6px 8px; text-align: right; }
     .answer { width: 100%; padding: 6px 8px; font-size: 0.875rem; resize: vertical; }
     .pick { text-align: center; }
+    .badges { display: inline-flex; gap: 4px; }
+    .draft-note { margin-top: var(--space-sm); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-sm); }
+    .draft-list { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-sm); }
+    .draft-list p { flex-basis: 100%; margin: 0; }
 
     @media (max-width: 760px) {
       .layout { grid-template-columns: minmax(0, 1fr); }
@@ -352,6 +378,10 @@ export class ExamEntryComponent implements OnInit {
   readonly sheet = signal<Sheet>(emptySheet(0));
   private readonly baseline = signal('');
   private readonly saved = signal<{ studentNo: string; summary: ResultSummary } | null>(null);
+  /** Unsaved sheets kept in localStorage (exam-entry-draft.ts), keyed by student number. */
+  readonly drafts = signal<Drafts>({});
+  /** Set while the open sheet came from a draft; `changed` = the server result differs from the one it started from. */
+  readonly restored = signal<{ studentNo: string; changed: boolean } | null>(null);
 
   readonly questions = computed(() => sortQuestions(this.exam()?.questions ?? []));
   readonly runs = computed(() => groupRuns(this.questions()));
@@ -370,6 +400,10 @@ export class ExamEntryComponent implements OnInit {
     if (!row || (!row.result && this.prog().entered === 0)) return null;
     return sheetSummary(this.questions(), this.exam()?.totalPoints ?? 0, this.sheet());
   });
+  readonly draftRows = computed(() => {
+    const d = this.drafts();
+    return this.rows().filter(r => r.studentNo in d);
+  });
   readonly shownResult = computed(() => {
     const s = this.saved();
     return s && s.studentNo === this.current() && !this.dirty() ? s.summary : null;
@@ -385,6 +419,28 @@ export class ExamEntryComponent implements OnInit {
       if (!this.loaded()) return;
       untracked(() => this.applyUrlStudent(no));
     });
+    // Sheet → draft: keep the open sheet while it differs from the server, drop it once it does not.
+    effect(() => {
+      const no = this.current();
+      if (no === null || !this.loaded()) return;
+      const sheet = this.sheet();
+      const base = this.baseline();
+      const dirty = this.dirty();
+      untracked(() => {
+        const d = dirty ? makeDraft(sheet, base, this.currentRow()?.fullName) : null;
+        this.drafts.update(ds => withDraft(ds, no, d));
+        if (!dirty && this.restored()?.studentNo === no) this.restored.set(null);
+      });
+    });
+    // Draft map → localStorage.
+    effect(() => {
+      const ds = this.drafts();
+      if (!this.loaded()) return;
+      untracked(() => {
+        const raw = serializeDrafts(this.questions(), ds);
+        if (raw === null) removeItem(draftKey(this.id())); else setItem(draftKey(this.id()), raw);
+      });
+    });
   }
 
   async ngOnInit() {
@@ -398,6 +454,10 @@ export class ExamEntryComponent implements OnInit {
       } catch (e) {
         this.error.set(errorMessage(e));
       }
+      const drafts = parseDrafts(getItem(draftKey(this.id())), this.questions());
+      this.drafts.set(drafts);
+      // Students outside the roster that only exist as a draft are listed again.
+      this.extras.set(Object.entries(drafts).map(([studentNo, d]) => ({ studentNo, fullName: d.name })));
       this.loaded.set(true);
       if (!this.student()) this.afterRender(() => this.startBtn()?.nativeElement.focus());
     } catch (e) {
@@ -415,6 +475,7 @@ export class ExamEntryComponent implements OnInit {
   pointsErr(q: QuestionDto, c: Cell) { return pointsError(q, c.points); }
   typeLabel(q: QuestionDto) { return TYPE_LABEL[q.type] ?? q.type; }
   status(r: StudentRow) { return studentStatus(r); }
+  hasDraft(no: string) { return no in this.drafts(); }
   statusLabel(r: StudentRow) { return STATUS_LABEL[studentStatus(r)]; }
   questionTitle(q: QuestionDto) {
     return [q.topic, q.text].filter(Boolean).join(' — ') || null;
@@ -424,7 +485,7 @@ export class ExamEntryComponent implements OnInit {
 
   selectStudent(no: string) {
     if (no === this.current()) { this.focusActive(); return; }
-    if (this.dirty() && !confirm(UNSAVED)) return;
+    if (!this.confirmDiscard()) return;
     this.open(no);
     this.syncUrl(no, false);
   }
@@ -476,7 +537,7 @@ export class ExamEntryComponent implements OnInit {
 
   private applyUrlStudent(no: string | null) {
     if (no === this.current()) return;
-    if (this.dirty() && !confirm(UNSAVED)) { this.syncUrl(this.current(), true); return; }
+    if (!this.confirmDiscard()) { this.syncUrl(this.current(), true); return; }
     this.open(no);
   }
 
@@ -487,9 +548,12 @@ export class ExamEntryComponent implements OnInit {
     }
     const row = no === null ? null : this.rows().find(r => r.studentNo === no) ?? null;
     const s = sheetFromResult(qs, row?.result);
+    const base = sheetSignature(qs, s);
+    const draft = no === null ? undefined : this.drafts()[no];
     this.current.set(no);
-    this.sheet.set(s);
-    this.baseline.set(sheetSignature(qs, s));
+    this.sheet.set(draft ? draftSheet(draft) : s);
+    this.baseline.set(base);
+    this.restored.set(draft && no !== null ? { studentNo: no, changed: draft.base !== base } : null);
     this.saved.set(null);
     this.error.set('');
     this.hl.set(-1);
@@ -678,15 +742,41 @@ export class ExamEntryComponent implements OnInit {
     }
   }
 
+  /* ---------- drafts ---------- */
+
+  /** Asks before throwing away unsaved entries; a confirmed discard also removes the stored draft. */
+  private confirmDiscard(): boolean {
+    const no = this.current();
+    if (!this.dirty() || no === null) return true;
+    if (!confirm(UNSAVED)) return false;
+    this.drafts.update(ds => withDraft(ds, no, null));
+    this.restored.set(null);
+    return true;
+  }
+
+  /** Back to the saved result (or an empty sheet); the effect then drops the draft. */
+  discardDraft() {
+    const no = this.current();
+    if (no === null) return;
+    const qs = this.questions();
+    const s = sheetFromResult(qs, this.currentRow()?.result);
+    this.sheet.set(s);
+    this.baseline.set(sheetSignature(qs, s));
+    this.drafts.update(ds => withDraft(ds, no, null));
+    this.restored.set(null);
+    this.focusActive();
+  }
+
   /* ---------- leaving ---------- */
 
   leave(e: MouseEvent, url: string) {
     if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;   // new tab/window: keep this page
     e.preventDefault();
-    if (this.dirty() && !confirm(UNSAVED)) return;
+    if (!this.confirmDiscard()) return;
     void this.router.navigateByUrl(url);
   }
 
+  /** The draft is already stored; the browser prompt stays as a second guard. */
   onBeforeUnload(e: BeforeUnloadEvent) {
     if (!this.dirty()) return;
     e.preventDefault();

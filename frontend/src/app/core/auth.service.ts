@@ -2,6 +2,7 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { ApiService } from './api.service';
 import type { EnrollmentRole, MeDto } from './api.models';
+import { EXAM_DRAFT_PREFIX, removeByPrefix } from './storage';
 
 /**
  * The signed-in person, from GET /api/auth/me (person + courses with my role). One session mechanism for
@@ -64,6 +65,7 @@ export class AuthService {
   async logout(): Promise<void> {
     try { await this.api.logout(); } catch { /* ignore */ }
     this.user.set(null);
+    removeByPrefix(EXAM_DRAFT_PREFIX);   // shared computers: unsaved answer sheets stay with the person
     this.router.navigateByUrl('/login');
   }
 

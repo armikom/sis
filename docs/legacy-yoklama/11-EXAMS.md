@@ -212,7 +212,7 @@ Ders detayına (`CourseDetailComponent`) "Sınavlar" bölümü eklenir: sınav k
   - Fare/dokunma: baloncuğa tıklamak cevabı işaretler (aynı baloncuğa tekrar tıklamak temizler).
 - `OPEN`/`FREE` soruları için puan alanı (`OPEN`'da ek olarak cevap metni); puan alanında `Enter` sonraki soruya geçer. Hızlı düğmeler: "Tam", "0".
 - Kaydedince sunucudan dönen puan gösterilir (toplam / yüzde, doğru-yanlış-boş sayıları) ve "Sonraki öğrenci" (sonucu olmayan sıradaki roster öğrencisi) odağı alır; `Enter` ile geçilir.
-- Kaydedilmemiş değişiklik varken öğrenci değiştirmek onay ister.
+- Kaydedilmemiş değişiklik varken öğrenci değiştirmek onay ister. Kaydedilmemiş cevaplar tarayıcıda (localStorage) taslak olarak tutulur; sayfa yenilenir, kapanır ya da başka sayfaya geçilirse öğrenci yeniden açıldığında geri yüklenir (listede "Taslak" rozeti, "Taslağı at" ile vazgeçilir). Kaydedince, onaylı vazgeçişte ve çıkış yapınca silinir.
 
 ### 4.3 Sınav detayı ve analiz
 - **Sonuçlar** sekmesi: roster + sonucu olan öğrenciler; toplam, yüzde, durum (Girilmedi / Eksik / Tamam), satırdan cevap formuna geçiş, sonucu silme, CSV indirme.
