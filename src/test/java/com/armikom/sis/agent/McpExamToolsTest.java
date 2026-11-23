@@ -25,7 +25,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** The exam editing tools of the MCP server (docs/MCP-exams.md): McpExamTools through JSON-RPC. */
+/** The exam editing tools of the MCP server (docs/MCP.md): McpExamTools through JSON-RPC. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")

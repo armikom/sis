@@ -438,7 +438,7 @@ public class ExamService {
             }
             List<Long> topicIds = null;
             if (q.topicIds() != null) {
-                if (q.topicIds().contains(null) || !topics.allInCourse(courseId, q.topicIds())) {
+                if (q.topicIds().stream().anyMatch(Objects::isNull) || !topics.allInCourse(courseId, q.topicIds())) {
                     errors.put(k + "topicIds", "Konu bu derse ait değil");
                 } else {
                     topicIds = List.copyOf(new LinkedHashSet<>(q.topicIds()));

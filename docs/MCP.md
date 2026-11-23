@@ -134,17 +134,97 @@ every course, staff do not see them in `student_detail`.
 | `set_chapter_open` | `chapter`, `open` | |
 | `create_chapter` | `number`, `title`, `doc_en?`, `doc_tr?`, `open?` | Topics derived at once; returns the chapter with its topics |
 | `update_chapter` | `chapter` + any of `number`, `title`, `doc_en`, `doc_tr`, `open` | A text replaces the whole text of that language (read it first); topics re-derived, ids stay |
-| `list_exams` | — | Exams with pool questions |
-| `get_exam` | `exam_id` | Items with key and numbers (printing stays on the web site) |
 | `set_question_topics` | `question_id`, `topic_ids` | Replaces the topics (`[]` clears), any state |
 | `sync_topics` | `chapter?` | Re-derives topics from the chapter text(s); ids stay, linked topics are never deleted |
 | `topic_stats` | `chapter?` | Per topic: `linked_questions`, `approved_questions`, `first_answers`, `first_answer_correct_pct`, `exam_questions`, `exam_answers`, `exam_correct_pct` (full points, effective exam topics, all exams) |
 | `publish_exam` | `exam_id`, `published?` (default true) | Publishes / hides exam results for students |
-| `create_exam` | `title`, `questions_per_chapter` (`{"6": 3}`, chapter numbers), `forms?`, `skip_flagged?` | Fails and saves nothing if a chapter is short |
+| `create_exam_from_pool` | `title`, `questions_per_chapter` (`{"6": 3}`, chapter numbers), `forms?`, `skip_flagged?` | Draws approved pool questions into a new exam; fails and saves nothing if a chapter is short. The result's `id` is an exam `get_exam` shows and the exam tools edit |
 
 Not available by MCP on purpose: deleting people, roster entries, exams or sessions, exam result deletion, frame
 images, the session key / display config, the AI helper of the discussion thread (it would spend the site's
 OpenRouter money).
+
+### Staff (I) — exams (`McpExamTools`)
+
+Reading and editing exams, their results and the analysis through `ExamService` / `ExamAnalysisService`, the same
+code as the exam screens (roster-only results, label sets, consecutive groups, rescoring on a key change, answers
+dropped on a type change). Tools addressed by `exam_id` or `question_id` take the course from that row;
+`question_id` is always the **exam question** id (from `get_exam`), not a pool question id.
+
+| Tool | Arguments | Notes |
+|---|---|---|
+| `list_exams` | — | `ExamSummaryDto` per exam: id, title, date, forms, question count, total points, results, average, published |
+| `get_exam` | `exam_id` | Full `ExamDto`: groups and every question with id, position, printed `label`, type, text, html, topic, points, `choiceLabels`, key, options with rationales, explanation, `topicIds` + effective `topics` |
+| `create_exam` | `title`, `exam_date?` (YYYY-MM-DD), `forms?` (1-4), `seed?`, `questions` (list of question objects), `groups?` (`{ref, text?, html?}`) | Exam from scratch; questions stored in the order sent; a group's questions must be consecutive. Ask first. |
+| `update_exam` | `exam_id`, `title` + the fields of `create_exam`; questions carry `id` to be kept; groups `{id?, ref, text?, html?}` | **Replaces the whole exam** like `PUT /api/exams/{id}`: a question left out is deleted with every answer to it; a group not sent back (with `id` + `ref`, and its questions with that `group_ref`) is dropped. `exam_date`/`forms`/`seed` not sent keep their value. Prefer the per-question tools. |
+| `add_exam_question` | `exam_id` + one question's fields, `position?` (1-based, default last) | Reads the exam, keeps everything, adds the question. `group_ref` `g<groupId>` (the groups of `get_exam`) puts it in an existing group. |
+| `update_exam_question` | `question_id` + any question fields | Patch: only sent fields change. Notes for students: `explanation`, `html`, `options[].rationale`. Key/points/label change rescores the stored answers; a type change drops them. |
+| `remove_exam_question` | `question_id` | `destructiveHint: true`. Deletes the question and all answers to it; ask the staff member first. |
+| `set_exam_question_topics` | `question_id`, `topic_ids` | Replaces the explicit topics (`[]` clears); ids from `list_topics`. The pool question's topics are inherited in addition. |
+| `exam_results` | `exam_id` | `ExamResultDto` per student: number, name, form, note, total, graded count, `answers[]` (`questionId`, `answer`, `points`) |
+| `save_exam_result` | `exam_id`, `student_no`, `answers?` (`{question_id, answer?, points?}`), `note?`, `form?` | Upsert of one sheet. Roster students only (clear error otherwise). CHOICE scored from the key; OPEN/FREE need `points`. Answers not sent are removed from the sheet. |
+| `exam_analysis` | `exam_id` | `ExamAnalysisDto`: average/median/min/max, per question success rate and choice counts, per topic, per student with weak topics |
+
+### Question object
+
+`type` (`CHOICE`, `OPEN`, `FREE`) and `max_points` are required for new questions; everything else optional:
+`text`, `html`, `topic` (free-text label), `choice_labels` (`"ABCD"`, `"DY"`, `"TF"`; 2-10 distinct characters) or
+`choice_count` (A.. of that many), `correct_choice`, `pool_question_id`, `topic_ids`, `explanation`,
+`options` (`{letter, text?, rationale?}`), `group_ref`, `sub_label`; `id` only in `update_exam`.
+
+Notes:
+
+- **Argument names are snake_case** (MCP convention here); camelCase aliases (`maxPoints`, `questionId`, …) are
+  accepted too. **Results are the exam module's camelCase DTOs** (`ExamDto`, `ExamResultDto`, `ExamAnalysisDto`)
+  unchanged, as `publish_exam` and `my_exam_results` already return them — the web page and the agent see the same
+  data.
+- **Replace semantics.** `ExamService.create/update` take the whole exam. `update_exam` exposes that as is; the
+  per-question tools read the exam, round-trip it through `toRequest(ExamDto)` (groups with their ids as ref
+  `g<id>`, questions with ids, topics, options, explanation and html) and send it back with one change, so nothing
+  else is touched. `explanation`/`html` stored as null are sent back as `""` (clears = stays empty).
+- `create_exam_from_pool` (in `McpTeacherTools`) draws approved pool questions into a new exam; its result's `id`
+  is an exam that `get_exam` shows and these tools can edit. The pool-based `list_exams` / `get_exam` were replaced
+  by the ones above.
+- Validation errors from the service (`ApiException` `VALIDATION_ERROR`) reach the agent with the field details
+  (`questions[2].groupRef`, `answers[0].answer`, …); a student number that is not on the roster gets an English
+  message pointing to `course_roster` / `add_student`.
+- Not available by MCP on purpose: deleting an exam, mailing results (`notify`), drafts, CSV export.
+
+### Staff (I) — attendance (`McpAttendanceTools`)
+
+Attendance sessions and records through `SessionService`, `AttendanceService`, `CourseStudentController` and
+`CsvExportService`. A `session_id` / `attendance_id` finds its course itself and checks that the caller is staff
+there.
+
+| Tool | Arguments | Notes |
+|---|---|---|
+| `list_sessions` | `status?` (`DRAFT`/`OPEN`/`CLOSED`) | Session summaries of the course, newest first: status, `closesAt`, `attendanceCount`, `flaggedPendingCount` |
+| `get_session` | `session_id` | Session detail as `GET /api/sessions/{id}` (settings, thresholds, times, `joinUrl` when not DRAFT). Never the session key or display config |
+| `create_session` | `title`, `duration_minutes?`, `classroom?` (id or exact name), `required_scans?`, `geo_mode?`, `ble_mode?`, `frame_capture?` | Creates a DRAFT session (not open). Ask first. Unset settings take the site defaults; `classroom` is looked up among classrooms owned by the caller or any staff of the course |
+| `open_session` | `session_id` | DRAFT → OPEN. The QR display stays on the web site |
+| `extend_session` | `session_id`, `minutes` | OPEN only (1–240) |
+| `close_session` | `session_id` | OPEN → CLOSED |
+| `reopen_session` | `session_id`, `minutes?` (default 15) | CLOSED → OPEN with a new code |
+| `session_attendances` | `session_id`, `only?` (`PENDING`/`PRESENT`/`REJECTED`) | `AttendanceDto` list, newest first; staff see flags, latency, thresholds, geo, BLE, device hint, note |
+| `decide_attendance` | `attendance_id`, `decision` (`APPROVED`/`REJECTED`/`NONE`; `APPROVE`/`REJECT` accepted), `note?` | Teacher decision; ask before rejecting |
+| `add_attendance` | `session_id`, `student_numbers` (list), `note?` | Bulk manual attendance (MANUAL, approved). Result `{added, skipped, errors, notInRoster}`; only roster students are recorded. Ask first |
+| `remove_attendance` | `attendance_id` | Deletes the record and its frame. `destructiveHint: true`; ask first |
+| `rejected_attempts` | `session_id`, `state?` (`SCANNING`/`COMPLETED`/`REJECTED`/`EXPIRED`, default `REJECTED`) | Check-in attempts: `studentNo`, `resultCode`, `deviceHint`, `conflictStudentNo`, `createdAt` |
+| `attendance_report` | — | `sessions` (opened sessions: id, title, opened_at, status) and `students`: one row per roster student with `student_no`, `full_name`, `sessions`, `present`, `pending`, `rejected`, `absent`, `present_pct` (null without sessions) |
+| `student_attendance` | `student` (number, e-mail, id or part of the name) | `GET /api/courses/{id}/students/{personId}` result: profile + one row per opened session (PRESENT/PENDING/REJECTED/ABSENT). Several matches → `{message, matches}` |
+| `session_export` | `session_id` | `{filename, csv}`: the same CSV as `GET /api/sessions/{id}/export.csv` (BOM, `;`, Turkish headers, roster students who did not attend) |
+
+Notes:
+
+- State rules: PRESENT = teacher approved, or accepted without a decision; PENDING = flagged without a decision;
+  REJECTED = teacher rejected; ABSENT = no record in an opened session (same as the staff student page).
+- `joinUrl` uses the configured public base URL (`app.public-base-url`), not the request host, since an MCP client
+  may talk to the server through any hostname.
+- Errors come back as tool errors (`isError: true`): state conflicts of the session service (`CONFLICT: …`),
+  unknown ids ("Session not found."), bad enum values, and the audience check. A student token does not see these
+  tools (`-32602 Unknown tool`).
+- Not available by MCP on purpose: the session key / display config (`display-config`), frame images, deleting
+  sessions, calibration runs, re-evaluation of thresholds.
 
 ## Prompts and resources
 
@@ -182,7 +262,8 @@ The server enforces the hard rules (hidden key, first answer, limits). The soft 
 
 ## Adding a tool
 
-1. Add an `McpTool.read(...)` or `McpTool.write(...)` entry to `tools()` in `McpStudentTools` or `McpTeacherTools`.
+1. Add an `McpTool.read(...)` or `McpTool.write(...)` entry to `tools()` in `McpStudentTools`, `McpTeacherTools`,
+   `McpExamTools` or `McpAttendanceTools` (a new group is a new `McpToolProvider` bean with an `@Order`).
    Choose the audience; describe it in simple English, because the model reads the description.
 2. Build the schema with `schema("name!", str(...), "other", integer(...))` (`!` = required; `course` is added).
 3. Get the course with `call.courseId()` (from `course` / default) or `call.courseOfQuestion(id)` /

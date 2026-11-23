@@ -23,7 +23,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** The attendance tools of the MCP server (docs/MCP-attendance.md) through JSON-RPC. */
+/** The attendance tools of the MCP server (docs/MCP.md) through JSON-RPC. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
