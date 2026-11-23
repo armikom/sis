@@ -202,7 +202,11 @@ export interface ExamDto {
   published?: boolean;
   /** Question groups; absent on older servers. */
   groups?: ExamGroupDto[];
+  /** Last "results published" mail to students and how many addresses it went to. */
+  notifiedAt?: string | null; notifiedCount?: number | null;
 }
+export interface ExamNotifyRequest { message?: string | null; includeReport?: boolean; }
+export interface ExamNotifyResult { sent: number; withoutEmail: number; results: number; notifiedAt: string; }
 export interface ExamSummaryDto {
   id: number; courseId: number; title: string; examDate: string | null; questionCount: number;
   totalPoints: number; resultCount: number; averagePoints: number | null; createdAt: string; published?: boolean;

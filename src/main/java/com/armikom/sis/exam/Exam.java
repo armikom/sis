@@ -39,6 +39,13 @@ public class Exam {
     @Column(nullable = false)
     private boolean published;
 
+    /** Last "results published" mail to the students, and how many addresses it went to. */
+    @Column(name = "notified_at")
+    private Instant notifiedAt;
+
+    @Column(name = "notified_count")
+    private Integer notifiedCount;
+
     protected Exam() {}
 
     public Exam(Course course, String title, LocalDate examDate, Instant createdAt) {
@@ -61,4 +68,8 @@ public class Exam {
     public Instant getCreatedAt() { return createdAt; }
     public boolean isPublished() { return published; }
     public void setPublished(boolean published) { this.published = published; }
+    public Instant getNotifiedAt() { return notifiedAt; }
+    public void setNotifiedAt(Instant notifiedAt) { this.notifiedAt = notifiedAt; }
+    public Integer getNotifiedCount() { return notifiedCount; }
+    public void setNotifiedCount(Integer notifiedCount) { this.notifiedCount = notifiedCount; }
 }

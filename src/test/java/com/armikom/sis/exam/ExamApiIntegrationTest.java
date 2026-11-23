@@ -633,6 +633,42 @@ class ExamApiIntegrationTest {
         assertEquals("D", r.get(s2).get(mc).get("answer").asString());
     }
 
+    @Test
+    void notifyStudentsAfterPublishing() throws Exception {
+        long courseId = createCourse();
+        JsonNode e = createExam(courseId, exam("Vize", "2026-11-20", List.of(q(null, "CHOICE", "T", 4, 4, "B"))));
+        long examId = e.get("id").asLong();
+        String withMail = studentNo(), noMail = studentNo();
+        mvc.perform(post("/api/courses/" + courseId + "/roster").with(t1()).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(toJson(Map.of("studentNo", withMail, "fullName", "Ayşe Örnek", "email", withMail + "@example.edu"))))
+                .andExpect(status().isCreated());
+        saveResult(examId, withMail, result(null, List.of(ans(qid(e, 0), "B", null))));
+        saveResult(examId, noMail, result(null, List.of(ans(qid(e, 0), "A", null))));
+
+        // Unpublished: refused.
+        mvc.perform(post("/api/exams/" + examId + "/notify").with(t1()).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isConflict());
+        mvc.perform(post("/api/exams/" + examId + "/publish").with(t1()).with(csrf())).andExpect(status().isOk());
+
+        JsonNode r = body(mvc.perform(post("/api/exams/" + examId + "/notify").with(t1()).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(toJson(Map.of("message", "Sorularınız için ofis saatine bekliyorum.", "includeReport", true))))
+                .andExpect(status().isOk()));
+        assertEquals(1, r.get("sent").asInt());
+        assertEquals(1, r.get("withoutEmail").asInt());
+        assertEquals(2, r.get("results").asInt());
+        JsonNode after = getJson("/api/exams/" + examId);
+        assertEquals(1, after.get("notifiedCount").asInt());
+        assertFalse(after.get("notifiedAt").isNull());
+        // Other staff cannot notify; a too long note is rejected.
+        mvc.perform(post("/api/exams/" + examId + "/notify").with(t2()).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isForbidden());
+        mvc.perform(post("/api/exams/" + examId + "/notify").with(t1()).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(toJson(Map.of("message", "x".repeat(4001)))))
+                .andExpect(status().isBadRequest());
+    }
+
     static List<String> labelsOf(JsonNode questions) {
         List<String> out = new ArrayList<>();
         questions.forEach(q -> out.add(q.get("label").asString()));

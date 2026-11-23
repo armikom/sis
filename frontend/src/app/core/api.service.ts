@@ -98,6 +98,7 @@ export class ApiService {
   deleteExamDraft(examId: number | string, studentNo: string) { return firstValueFrom(this.http.delete<void>(`/api/exams/${examId}/drafts/${encodeURIComponent(studentNo)}`)); }
   getExamAnalysis(examId: number | string) { return firstValueFrom(this.http.get<M.ExamAnalysisDto>(`/api/exams/${examId}/analysis`)); }
   examCsvUrl(examId: number | string) { return `/api/exams/${examId}/results.csv`; }
+  notifyExam(examId: number | string, r: M.ExamNotifyRequest) { return firstValueFrom(this.http.post<M.ExamNotifyResult>(`/api/exams/${examId}/notify`, r)); }
   getCourseLearning(courseId: number | string) { return firstValueFrom(this.http.get<M.CourseLearningDto>(`/api/courses/${courseId}/learning`)); }
   getStudentLearning(courseId: number | string, studentNo: string) { return firstValueFrom(this.http.get<M.StudentLearningDto>(`/api/courses/${courseId}/learning/students/${encodeURIComponent(studentNo)}`)); }
 

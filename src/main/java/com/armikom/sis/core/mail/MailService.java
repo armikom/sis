@@ -6,8 +6,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import jakarta.mail.internet.MimeMessage;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.ExecutorService;
@@ -55,6 +57,35 @@ public class MailService {
      */
     public void sendAsync(String to, String subject, String text, String logLine) {
         background.submit(() -> send(to, subject, text, logLine));
+    }
+
+    /**
+     * Queues a message with an HTML body and a plain-text alternative. EWS sends the text only; without a mail
+     * server the subject and recipient are logged.
+     */
+    public void sendHtmlAsync(String to, String subject, String text, String html) {
+        background.submit(() -> {
+            try {
+                if (ews.isConfigured()) {
+                    ews.send(to, subject, text);
+                    return;
+                }
+                JavaMailSender sender = mailSender.getIfAvailable();
+                if (sender == null || smtpHost.isBlank()) {
+                    log.info("Mail is not configured. {} for {}", subject, to);
+                    return;
+                }
+                MimeMessage msg = sender.createMimeMessage();
+                MimeMessageHelper h = new MimeMessageHelper(msg, true, "UTF-8");
+                h.setFrom(from);
+                h.setTo(to);
+                h.setSubject(subject);
+                h.setText(text, html);
+                sender.send(msg);
+            } catch (Exception e) {
+                log.error("Could not send mail to {}", to, e);
+            }
+        });
     }
 
     void send(String to, String subject, String text, String logLine) {

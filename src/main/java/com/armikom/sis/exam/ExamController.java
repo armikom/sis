@@ -19,9 +19,12 @@ public class ExamController {
     private final ExamService service;
     private final ExamAnalysisService analysis;
     private final ExamDraftService drafts;
+    private final ExamNotifyService notifier;
 
-    public ExamController(ExamService service, ExamAnalysisService analysis, ExamDraftService drafts) {
+    public ExamController(ExamService service, ExamAnalysisService analysis, ExamDraftService drafts,
+                          ExamNotifyService notifier) {
         this.service = service;
+        this.notifier = notifier;
         this.drafts = drafts;
         this.analysis = analysis;
     }
@@ -96,6 +99,12 @@ public class ExamController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteDraft(@PathVariable long id, @PathVariable String studentNo) {
         drafts.delete(id, studentNo);
+    }
+
+    /** Mails "your results are published" (optionally with the per-student report) to the students with a result. */
+    @PostMapping("/exams/{id}/notify")
+    public NotifyResultDto notify(@PathVariable long id, @RequestBody(required = false) NotifyRequest req) {
+        return notifier.notify(id, req == null ? new NotifyRequest(null, null) : req);
     }
 
     @GetMapping("/exams/{id}/analysis")

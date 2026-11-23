@@ -132,6 +132,7 @@ V4 (`V4__question_groups.sql`): `exam_question_group(id, exam_id, position, text
 | GET | `/api/exams/{id}/drafts` | → `{studentNo, sheet, updatedAt, updatedBy}[]` — cevap girişinin kaydedilmemiş taslakları (sonuç değildir; öğrenciye, puanlamaya, analize ve CSV'ye girmez) |
 | PUT | `/api/exams/{id}/drafts/{studentNo}` | taslak nesnesi (JSON object, ≤ 500 000 karakter) → `{studentNo, updatedAt}` (upsert; numara formatı kontrol edilir, roster şartı yok) |
 | DELETE | `/api/exams/{id}/drafts/{studentNo}` | → 204 (sonuç kaydedilince ya da silinince taslak da silinir) |
+| POST | `/api/exams/{id}/notify` | `{message?, includeReport?}` → `{sent, withoutEmail, results, notifiedAt}` — yayınlanmış sınavın sonucu olan ve roster'da e-postası bulunan öğrencilerine "sonuçlarınız açıklandı" e-postası (puan, değerlendirme bağlantısı, isteğe bağlı döküm); yayınlanmamışsa 409 |
 | GET | `/api/exams/{id}/analysis` | → `ExamAnalysisDto` |
 | GET | `/api/exams/{id}/results.csv` | → CSV (UTF-8 BOM, `;` ayırıcı, mevcut CSV dışa aktarımıyla aynı kurallar) |
 | GET | `/api/courses/{courseId}/learning` | → `CourseLearningDto` |
@@ -242,6 +243,9 @@ Ders detayına (`CourseDetailComponent`) "Sınavlar" bölümü eklenir: sınav k
 - `/t/exams/:id/sheets[?student=]`: sonucu olan her öğrenci için bir sayfa (yazdırmada sayfa sonu): ders, sınav, tarih; numara, ad, form; toplam / yüzde / doğru-yanlış-boş. Sırayla grup kökleri ve sorular: etiket, içerik (HTML ya da metin), seçenekler (doğru ✓, verilen ●), "Verilen cevap / Doğru cevap", durum rozeti (Doğru / Yanlış / Kısmi / Boş / Puanlanmadı), puan; `OPEN` cevabı metin olarak.
 - Denetimler: öğrenci seçimi (tümü / biri), seçenek metinleri, cevap açıklamaları, yalnızca yanlış/boş; "Yazdır / PDF" (`window.print`). Veri mevcut uç noktalardan gelir (`GET /api/exams/{id}`, `/results`, roster); yeni API yok.
 - Öğrencinin kendi sayfası (`/courses/:id/results/:examId`) aynı içeriği (grup kökü, HTML, etiketler) gösterir ve "Yazdır / PDF" düğmesi vardır; sınıf çubukları ve denetimler yazdırmada gizlenir.
+
+### 4.6 Öğrencilere e-posta
+- Sınav detayında (yalnızca yayınlanmış sınavda) "Öğrencilere e-posta gönder": not, "sınav dökümünü ekle" seçeneği, e-postası olan/olmayan sayıları, onay. Gönderim arka planda; sayfada son gönderim zamanı ve sayısı.
 
 ### 4.4 Öğrenme durumu (ders)
 - Konu listesi (başarı artan) — her konu açıldığında o konuda zayıf öğrenciler: toplu takviye planı için. Numara listesini kopyalama.

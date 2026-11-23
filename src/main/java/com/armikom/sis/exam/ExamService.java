@@ -208,7 +208,8 @@ public class ExamService {
                         q.getPoolQuestionId(), explicit.getOrDefault(q.getId(), List.of()),
                         topicDtos(effective.get(q.getId())), q.getExplanation(),
                         inLabelOrder(q, opts.get(q.getId())), q.getGroupId(), q.getSubLabel())).toList(),
-                groupDtos(groupRepo.findByExamId(exam.getId()), questions));
+                groupDtos(groupRepo.findByExamId(exam.getId()), questions),
+                exam.getNotifiedAt() == null ? null : exam.getNotifiedAt().toString(), exam.getNotifiedCount());
     }
 
     /** Options in the question's label order ("TF" lists T before F); letters outside the labels go last. */

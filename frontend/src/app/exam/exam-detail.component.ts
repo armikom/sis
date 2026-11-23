@@ -42,7 +42,27 @@ import {
               <button type="button" class="btn btn-sm" [class.btn-primary]="!e.published" [class.btn-outline]="e.published" [disabled]="publishing()" (click)="togglePublish(e)">
                 {{ e.published ? 'Yayından kaldır' : 'Öğrencilere yayınla' }}
               </button>
+              @if (e.published) {
+                <button type="button" class="btn btn-outline btn-sm" (click)="openNotify()" title="Sonuçların açıklandığını öğrencilere e-postayla bildir">✉ Öğrencilere e-posta gönder</button>
+                @if (e.notifiedAt) { <span class="text-sm text-secondary">Son gönderim: {{ formatWhen(e.notifiedAt) }} · {{ e.notifiedCount ?? 0 }} öğrenci</span> }
+              }
             </div>
+            @if (notifyOpen()) {
+              <div class="card notify" role="dialog" aria-labelledby="notify-title">
+                <h2 id="notify-title" class="panel-title">Öğrencilere e-posta</h2>
+                <p class="text-sm text-secondary">Sonucu girilmiş {{ notifyCounts().results }} öğrenciden {{ notifyCounts().withEmail }} tanesinin e-posta adresi var; e-postası olmayanlara gönderilmez.
+                  Her öğrenciye puanı ve değerlendirme sayfasının bağlantısı gider.</p>
+                <label class="field">Not (isteğe bağlı)
+                  <textarea class="form-input" rows="3" maxlength="4000" [value]="notifyMessage()" (input)="notifyMessage.set($any($event.target).value)" placeholder="Örn. Sınav kağıtlarınızı ofis saatinde görebilirsiniz."></textarea>
+                </label>
+                <label class="toggle"><input type="checkbox" [checked]="notifyReport()" (change)="notifyReport.set($any($event.target).checked)" /> Sınav dökümünü e-postaya ekle (her soru: verilen cevap, doğru cevap, durum, puan)</label>
+                @if (notifyResult(); as r) { <p class="text-sm" role="status">{{ r }}</p> }
+                <div class="flex-gap">
+                  <button type="button" class="btn btn-primary btn-sm" (click)="sendNotify(e)" [disabled]="notifying() || notifyCounts().withEmail === 0">{{ notifying() ? 'Gönderiliyor…' : 'Gönder (' + notifyCounts().withEmail + ')' }}</button>
+                  <button type="button" class="btn btn-outline btn-sm" (click)="notifyOpen.set(false)">Kapat</button>
+                </div>
+              </div>
+            }
           </div>
           <div class="flex-gap actions">
             <a class="btn btn-primary btn-sm" [routerLink]="['/t/exams', id(), 'entry']">Cevap gir</a>
@@ -284,6 +304,10 @@ import {
   `,
   styles: [`
     .actions { flex-wrap: wrap; }
+    .notify { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; max-width: 640px; }
+    .notify .panel-title { margin: 0; font-size: 1rem; }
+    .notify .field { display: flex; flex-direction: column; gap: 4px; font-size: 0.875rem; }
+    .notify .toggle { display: flex; align-items: center; gap: 8px; font-size: 0.875rem; }
     .publish { flex-wrap: wrap; margin-top: 6px; }
     .q-list { list-style: none; margin: 0; padding: 0; }
     .q-item { border: 1px solid var(--c-border); border-radius: var(--radius-md); background: var(--c-surface); padding: 10px 12px; margin-bottom: 8px; }
@@ -371,6 +395,17 @@ export class ExamDetailComponent implements OnInit {
   readonly segments = textSegments;
   readonly anyTopics = computed(() => this.questionRows().some(q => q.topicList.length > 0));
   readonly showExport = signal(false);
+  readonly notifyOpen = signal(false);
+  readonly notifyMessage = signal('');
+  readonly notifyReport = signal(true);
+  readonly notifying = signal(false);
+  readonly notifyResult = signal('');
+  /** Results whose student has an e-mail on the roster (the mail goes only to them). */
+  readonly notifyCounts = computed(() => {
+    const emails = new Map(this.roster().map(r => [r.studentNo, !!r.email?.trim()]));
+    const results = this.results();
+    return { results: results.length, withEmail: results.filter(r => emails.get(r.studentNo)).length };
+  });
   readonly query = signal('');
   readonly filter = signal<ResultFilter>('ALL');
 
@@ -425,6 +460,25 @@ export class ExamDetailComponent implements OnInit {
   }
 
   /** Publish: students see their results and the answer key. The exam is read again for the server's state. */
+  openNotify() { this.notifyResult.set(''); this.notifyOpen.set(true); }
+
+  formatWhen(iso: string) {
+    try { return new Date(iso).toLocaleString('tr-TR', { dateStyle: 'medium', timeStyle: 'short' }); } catch { return iso; }
+  }
+
+  async sendNotify(e: ExamDto) {
+    const n = this.notifyCounts();
+    if (!confirm(`${n.withEmail} öğrenciye "${e.title}" sonuç e-postası gönderilsin mi?`)) return;
+    this.notifying.set(true);
+    this.notifyResult.set('');
+    try {
+      const r = await this.api.notifyExam(e.id, { message: this.notifyMessage().trim() || null, includeReport: this.notifyReport() });
+      this.notifyResult.set(`${r.sent} öğrenciye gönderildi; ${r.withoutEmail} öğrencinin e-postası yok.`);
+      this.exam.set(await this.api.getExam(this.id()));
+    } catch (err) { this.notifyResult.set(errorMessage(err)); }
+    finally { this.notifying.set(false); }
+  }
+
   async togglePublish(e: ExamDto) {
     const publish = !e.published;
     const question = publish

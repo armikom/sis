@@ -35,7 +35,14 @@ public final class ExamDtos {
 
     public record ExamDto(long id, long courseId, String courseCode, String courseName, String title,
                           LocalDate examDate, int forms, Long seed, BigDecimal totalPoints, long resultCount,
-                          String createdAt, boolean published, List<QuestionDto> questions, List<GroupDto> groups) {}
+                          String createdAt, boolean published, List<QuestionDto> questions, List<GroupDto> groups,
+                          String notifiedAt, Integer notifiedCount) {}
+
+    /** {@code POST /api/exams/{id}/notify}: a note from the instructor and whether the per-student report is included. */
+    public record NotifyRequest(String message, Boolean includeReport) {}
+
+    /** {@code sent}: addresses the mail was queued for; {@code withoutEmail}: results whose student has no address. */
+    public record NotifyResultDto(int sent, int withoutEmail, int results, String notifiedAt) {}
 
     public record ExamSummaryDto(long id, long courseId, String title, LocalDate examDate, int forms,
                                  int questionCount, BigDecimal totalPoints, long resultCount,
