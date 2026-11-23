@@ -80,6 +80,17 @@ final class McpPrompts {
                             (clarity, one correct answer, distractors, duplicates, chapter fit), and your suggestion \
                             (APPROVE, REVISE with a simple-English note, or REJECT). Wait for my decision before \
                             calling decide_question."""),
+            new Prompt("tag_exam_topics", "Tag the exam questions with topics",
+                    "Propose a topic for every question of an exam, then link them after your approval.", true,
+                    List.of(new Arg("exam", "Exam id (empty = the latest exam)", false), COURSE), """
+                            Let's tag the questions of the exam{exam_text}{course_text} with topics.
+                            1. Call list_exams{exam_pick} and get_exam with that exam_id; call list_topics for the course.
+                            2. For every question (use its label), read the text (or html) and the options and propose \
+                            the best matching topic or topics; quote the topic as "chapter.number title". Mark the \
+                            questions where you are unsure. Questions linked to a pool question already carry that \
+                            question's topics: show them, propose extra ones only when needed.
+                            3. Show me the whole table and wait for my corrections. Then call set_exam_question_topics \
+                            for each question. Finish with topic_stats for the chapters of the exam."""),
             new Prompt("weekly_report", "Weekly class report",
                     "Participation, study state and question quality in one report.", true, List.of(COURSE), """
                             Write a short weekly report for me in Turkish{course_text}. Use class_overview, \
@@ -124,6 +135,7 @@ final class McpPrompts {
         String text = p.text().replace("{week}", week).replace("{count}", count.isEmpty() ? "5" : count)
                 .replace("{week_text}", week.isEmpty() ? "" : " for chapter " + week)
                 .replace("{exam_text}", exam.isEmpty() ? "" : " (exam id " + exam + ")")
+                .replace("{exam_pick}", exam.isEmpty() ? " and pick the latest exam" : "")
                 .replace("{exam_call}", exam.isEmpty()
                         ? " without exam_id, pick the latest published exam, then call it again with that exam_id"
                         : " with exam_id=" + exam)

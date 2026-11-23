@@ -198,12 +198,15 @@ import { getItem, setItem } from '../core/storage';
         <tr><td>Participation</td><td><code>class_overview</code>, <code>student_detail</code>, <code>study_overview</code>, <code>import_students</code></td></tr>
         <tr><td>Review</td><td><code>question_counts</code>, <code>list_questions_for_review</code>, <code>decide_question</code>, <code>edit_question</code>, <code>question_stats</code></td></tr>
         <tr><td>Reports</td><td><code>list_flags</code>, <code>resolve_flag</code>, <code>hide_comment</code></td></tr>
-        <tr><td>Chapters, exams</td><td><code>set_chapter_open</code>, <code>list_exams</code>, <code>get_exam</code>, <code>create_exam</code></td></tr>
+        <tr><td>Roster</td><td><code>course_roster</code>, <code>add_student</code>, <code>import_students</code></td></tr>
+        <tr><td>Chapters, topics</td><td><code>create_chapter</code>, <code>update_chapter</code>, <code>set_chapter_open</code>, <code>list_topics</code>, <code>sync_topics</code>, <code>set_question_topics</code>, <code>topic_stats</code></td></tr>
+        <tr><td>Exams</td><td><code>list_exams</code>, <code>get_exam</code>, <code>create_exam</code>, <code>create_exam_from_pool</code>, <code>add_exam_question</code>, <code>update_exam_question</code>, <code>set_exam_question_topics</code>, <code>remove_exam_question</code>, <code>exam_results</code>, <code>save_exam_result</code>, <code>exam_analysis</code>, <code>publish_exam</code></td></tr>
+        <tr><td>Attendance</td><td><code>list_sessions</code>, <code>create_session</code>, <code>open_session</code>, <code>close_session</code>, <code>session_attendances</code>, <code>decide_attendance</code>, <code>add_attendance</code>, <code>attendance_report</code>, <code>student_attendance</code>, <code>session_export</code></td></tr>
         <tr><td>Shared</td><td><code>list_courses</code>, <code>whoami</code>, <code>list_chapters</code>, <code>read_chapter</code>, <code>list_questions</code>, <code>get_question</code>, <code>get_comments</code>, <code>post_comment</code></td></tr>
       </tbody>
     </table> }
-    <p class="small muted">The agent cannot delete people, delete exams or change chapter texts. Use the web site for
-      those.</p>
+    <p class="small muted">The agent cannot delete people, roster entries, exams or sessions. Use the web site for
+      those. Tools that change something ask you first.</p>
 
     @if (!teacher) {
       <h2 id="progress">7. How your progress is kept</h2>
@@ -441,12 +444,15 @@ import { getItem, setItem } from '../core/storage';
         <tr><td>Katılım</td><td><code>class_overview</code>, <code>student_detail</code>, <code>study_overview</code>, <code>import_students</code></td></tr>
         <tr><td>İnceleme</td><td><code>question_counts</code>, <code>list_questions_for_review</code>, <code>decide_question</code>, <code>edit_question</code>, <code>question_stats</code></td></tr>
         <tr><td>Bildirimler</td><td><code>list_flags</code>, <code>resolve_flag</code>, <code>hide_comment</code></td></tr>
-        <tr><td>Bölüm, sınav</td><td><code>set_chapter_open</code>, <code>list_exams</code>, <code>get_exam</code>, <code>create_exam</code></td></tr>
+        <tr><td>Liste</td><td><code>course_roster</code>, <code>add_student</code>, <code>import_students</code></td></tr>
+        <tr><td>Bölüm, konu</td><td><code>create_chapter</code>, <code>update_chapter</code>, <code>set_chapter_open</code>, <code>list_topics</code>, <code>sync_topics</code>, <code>set_question_topics</code>, <code>topic_stats</code></td></tr>
+        <tr><td>Sınav</td><td><code>list_exams</code>, <code>get_exam</code>, <code>create_exam</code>, <code>create_exam_from_pool</code>, <code>add_exam_question</code>, <code>update_exam_question</code>, <code>set_exam_question_topics</code>, <code>remove_exam_question</code>, <code>exam_results</code>, <code>save_exam_result</code>, <code>exam_analysis</code>, <code>publish_exam</code></td></tr>
+        <tr><td>Yoklama</td><td><code>list_sessions</code>, <code>create_session</code>, <code>open_session</code>, <code>close_session</code>, <code>session_attendances</code>, <code>decide_attendance</code>, <code>add_attendance</code>, <code>attendance_report</code>, <code>student_attendance</code>, <code>session_export</code></td></tr>
         <tr><td>Ortak</td><td><code>list_courses</code>, <code>whoami</code>, <code>list_chapters</code>, <code>read_chapter</code>, <code>list_questions</code>, <code>get_question</code>, <code>get_comments</code>, <code>post_comment</code></td></tr>
       </tbody>
     </table> }
-    <p class="small muted">Ajan kişi silemez, sınav silemez, bölüm metnini değiştiremez. Bunlar için web sitesini
-      kullanın.</p>
+    <p class="small muted">Ajan kişi, liste kaydı, sınav ya da yoklama oturumu silemez. Bunlar için web sitesini
+      kullanın. Değişiklik yapan araçlar önce size sorar.</p>
 
     @if (!teacher) {
       <h2 id="progress">7. İlerlemeniz nasıl saklanır?</h2>

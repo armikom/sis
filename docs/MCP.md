@@ -1,8 +1,9 @@
 # MCP server — technical reference
 
-SIS has a built-in [MCP](https://modelcontextprotocol.io) server for the question pool, so students and staff can
-use the pool from their own AI agent. Ported from question-pool (`docs/mcp.md` there) and made course-aware. This
-page is for people who run or change the site.
+SIS has a built-in [MCP](https://modelcontextprotocol.io) server, so students can study the question pool from their
+own AI agent and staff can run the course — roster, chapters and topics, question review, exams and results,
+attendance — from theirs. Ported from question-pool (`docs/mcp.md` there), made course-aware and extended to the
+other modules. This page is for people who run or change the site.
 
 ## Overview
 
@@ -27,8 +28,11 @@ work: Claude Code, Claude Desktop (through `mcp-remote`), VS Code, Cursor, Codex
 | `McpTool` | Tool record (name, schema, audience, read-only flag, handler), schema helpers (every schema gets the optional `course` property), `Args` reader |
 | `McpCall` | One tool call: person, arguments, course resolution + audience check |
 | `McpCourses` | The person's pool courses and the `course` argument resolution |
+| `McpToolProvider` | A bean that contributes tools; the controller collects every provider in `@Order` |
 | `McpStudentTools` | Tools for everyone and for students; progress queries (also used by teacher tools) |
-| `McpTeacherTools` | Tools for course staff |
+| `McpTeacherTools` | Staff tools of the pool: participation, review, flags, roster, chapters and topics, pool exams |
+| `McpExamTools` | Staff tools for exams and results (`ExamService`, `ExamAnalysisService`) |
+| `McpAttendanceTools` | Staff tools for attendance sessions and records (`SessionService`, `AttendanceService`) |
 | `McpPrompts` | Ready-made prompts |
 | `McpTokenService` / `McpTokenController` | Tokens; `/api/mcp-token` (GET info, POST create/replace, DELETE) |
 
@@ -43,8 +47,10 @@ so on.
 
 ## Courses
 
-- A person's **pool courses** are the courses with `pool_enabled`, not archived, where they have a live enrollment
-  (`list_courses` shows them with the role).
+- A person's **MCP courses** are the not archived courses with a live enrollment: every course where they are staff
+  (exams, attendance and the roster do not need the pool) and the `pool_enabled` ones where they are a student.
+  `list_courses` shows them with the role and the `pool` flag; pool tools in a course without the pool fail with
+  "The question pool is not enabled for this course.".
 - Every tool takes an optional `course` argument: the course code (spaces and case ignored, e.g. `SENG403`) or the
   course id. Without it, the person's only pool course is used; with two or more the tool returns an error that
   lists the courses and asks for `course`. A code that exists in several terms needs the id.
@@ -52,8 +58,8 @@ so on.
   `resolve_flag`, `get_exam`, …) take the course from that row; `course` is not needed.
 - **Audience per course:** student tools (`S`) need a STUDENT enrollment in that course; teacher tools (`I`) need
   OWNER/INSTRUCTOR/ASSISTANT there (or system admin). `tools/list` shows `S` tools to people with any student pool
-  course and `I` tools to people with any staff pool course (or admins); `ALL` tools to everyone.
-- System admins may address any pool-enabled course by id or code even without an enrollment.
+  course and `I` tools to people with any staff course (or admins); `ALL` tools to everyone.
+- System admins may address any course by id or code even without an enrollment.
 
 ## Tokens
 
@@ -123,7 +129,11 @@ every course, staff do not see them in `student_detail`.
 | `list_flags` | `include_resolved?` | |
 | `resolve_flag` | `flag_id` | |
 | `hide_comment` | `comment_id` | `destructiveHint: true` |
+| `course_roster` | — | Roster of the course: `personId`, `studentNo`, `fullName`, `email` |
+| `add_student` | `student_no`, `full_name`, `email?` | One roster entry (`RosterService.add`); many → `import_students` |
 | `set_chapter_open` | `chapter`, `open` | |
+| `create_chapter` | `number`, `title`, `doc_en?`, `doc_tr?`, `open?` | Topics derived at once; returns the chapter with its topics |
+| `update_chapter` | `chapter` + any of `number`, `title`, `doc_en`, `doc_tr`, `open` | A text replaces the whole text of that language (read it first); topics re-derived, ids stay |
 | `list_exams` | — | Exams with pool questions |
 | `get_exam` | `exam_id` | Items with key and numbers (printing stays on the web site) |
 | `set_question_topics` | `question_id`, `topic_ids` | Replaces the topics (`[]` clears), any state |
@@ -132,8 +142,9 @@ every course, staff do not see them in `student_detail`.
 | `publish_exam` | `exam_id`, `published?` (default true) | Publishes / hides exam results for students |
 | `create_exam` | `title`, `questions_per_chapter` (`{"6": 3}`, chapter numbers), `forms?`, `skip_flagged?` | Fails and saves nothing if a chapter is short |
 
-Not available by MCP on purpose: deleting people or roster entries, deleting exams, editing chapter texts, the AI
-helper of the discussion thread (it would spend the site's OpenRouter money).
+Not available by MCP on purpose: deleting people, roster entries, exams or sessions, exam result deletion, frame
+images, the session key / display config, the AI helper of the discussion thread (it would spend the site's
+OpenRouter money).
 
 ## Prompts and resources
 
@@ -141,7 +152,8 @@ helper of the discussion thread (it would spend the site's OpenRouter money).
   course?)`, `improve_my_question(week, course?)` (`week` = chapter number), `review_exam(exam?, course?)` (missed
   topics of a published exam: `my_exam_results` → `read_topic` → explain with options/rationales → practise with
   `next_question(topic)`).
-- Staff prompts: `review_pending(week?, course?)`, `weekly_report(course?)`.
+- Staff prompts: `review_pending(week?, course?)`, `weekly_report(course?)`, `tag_exam_topics(exam?, course?)`
+  (propose topics for every question of an exam, link them with `set_exam_question_topics` after approval).
 - Resources: `sis://courses/<courseId>/chapters/<number>/<en|tr>` (Markdown) for every chapter of the person's pool
   courses, also as the template `sis://courses/{course_id}/chapters/{number}/{language}`.
 
