@@ -8,6 +8,7 @@ import com.armikom.sis.pool.PoolExamController;
 import com.armikom.sis.pool.PoolStaffController;
 import com.armikom.sis.pool.PoolTopicController;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -30,7 +31,8 @@ import static com.armikom.sis.agent.McpTool.str;
  * question-pool, now per course). They call the same controller methods as the staff screens.
  */
 @Component
-public class McpTeacherTools {
+@Order(2)
+public class McpTeacherTools implements McpToolProvider {
 
     private static final String COURSE_OF_FLAG = """
             select c.course_id from question_flag f join question q on q.id = f.question_id
@@ -62,7 +64,8 @@ public class McpTeacherTools {
         this.roster = roster;
     }
 
-    List<McpTool> tools() {
+    @Override
+    public List<McpTool> tools() {
         Audience t = Audience.INSTRUCTOR;
         return List.of(
                 // ---------- people ----------
@@ -146,7 +149,20 @@ public class McpTeacherTools {
                             return staff.hideComment(c.courseOf(COURSE_OF_COMMENT, id, "Comment not found."), id);
                         }),
 
-                // ---------- chapters and exams ----------
+                // ---------- roster ----------
+                McpTool.read(t, "course_roster", "Course roster",
+                        "The students on the roster of the course: person id, student number, real name, e-mail.",
+                        schema(), c -> roster.list(c.courseId())),
+                McpTool.write(t, "add_student", "Add one student to the roster",
+                        "Puts one student on the roster of the course (creates the person when the number is new). "
+                                + "For many students use import_students. Ask the staff member first.",
+                        schema("student_no!", str("Student number."), "full_name!", str("Full name."),
+                                "email", str("E-mail address (optional).")), c -> {
+                            Args a = c.args();
+                            return roster.add(c.courseId(), a.str("student_no"), a.str("full_name"), a.optStr("email"));
+                        }),
+
+                // ---------- chapters ----------
                 McpTool.write(t, "set_chapter_open", "Open or close a chapter",
                         "Opens or closes a chapter for new student questions.",
                         schema("chapter!", chapter(), "open!", bool("true = open for new questions.")), c -> {
@@ -154,6 +170,40 @@ public class McpTeacherTools {
                             return staff.updateChapter(courseId, student.chapterId(courseId, c.args().num("chapter")),
                                     new PoolStaffController.ChapterIn(null, null, null, null, c.args().optBool("open")));
                         }),
+                McpTool.write(t, "create_chapter", "Create a chapter",
+                        "Adds a chapter (week) to the course with its reference texts in Markdown. Topics are the "
+                                + "numbered '## N. Title' headings of the texts and are derived at once. Ask the staff "
+                                + "member first.",
+                        schema("number!", integer("Chapter number (1-999), unique in the course."),
+                                "title!", str("Chapter title (at most 300 characters)."),
+                                "doc_en", str("English text in Markdown (optional)."),
+                                "doc_tr", str("Turkish text in Markdown (optional)."),
+                                "open", bool("Open for new student questions (default true).")), c -> {
+                            long courseId = c.courseId();
+                            Args a = c.args();
+                            Map<String, Object> created = staff.createChapter(courseId, new PoolStaffController.ChapterIn(
+                                    a.optInt("number"), a.str("title"), a.optStr("doc_en"), a.optStr("doc_tr"),
+                                    a.optBool("open")));
+                            return chapterOut(courseId, ((Number) created.get("id")).longValue());
+                        }),
+                McpTool.write(t, "update_chapter", "Edit a chapter",
+                        "Changes the title, number, texts or open state of a chapter; fields you leave out keep their "
+                                + "value. A text replaces the whole text of that language: read it first (read_chapter) "
+                                + "and send it back with your change, for example a new '## N. Title' section to add a "
+                                + "topic. Topics are re-derived from the texts (ids stay). Ask the staff member first.",
+                        schema("chapter!", chapter(), "number", integer("New chapter number (optional)."),
+                                "title", str("New title (optional)."),
+                                "doc_en", str("Whole English text in Markdown (optional)."),
+                                "doc_tr", str("Whole Turkish text in Markdown (optional)."),
+                                "open", bool("Open for new student questions (optional).")), c -> {
+                            long courseId = c.courseId();
+                            Args a = c.args();
+                            long id = student.chapterId(courseId, a.num("chapter"));
+                            staff.updateChapter(courseId, id, new PoolStaffController.ChapterIn(a.optInt("number"),
+                                    a.optStr("title"), a.optStr("doc_en"), a.optStr("doc_tr"), a.optBool("open")));
+                            return chapterOut(courseId, id);
+                        }),
+                // ---------- exams (built from the pool) ----------
                 // ---------- topics ----------
                 McpTool.write(t, "set_question_topics", "Set the topics of a question",
                         "Replaces the topics of any question of the course (any state). An empty list removes all "
@@ -336,6 +386,16 @@ public class McpTeacherTools {
                 .param("c", chapter == null ? null : student.chapterId(courseId, chapter))
                 .param("min", min == null ? 1 : min)
                 .query().listOfRows();
+    }
+
+    /** A chapter after a change: number, title, open and its topics (texts left out, they can be long). */
+    private Map<String, Object> chapterOut(long courseId, long chapterId) {
+        Map<String, Object> out = new LinkedHashMap<>(db.sql(
+                "select id, number, title, open, length(doc_en) as doc_en_chars, length(doc_tr) as doc_tr_chars "
+                        + "from chapter where id = :id").param("id", chapterId).query().singleRow());
+        out.put("topics", topicApi.list(courseId).stream()
+                .filter(tp -> ((Number) tp.get("chapter_id")).longValue() == chapterId).toList());
+        return out;
     }
 
     private Map<String, Object> exam(long courseId, long id) {

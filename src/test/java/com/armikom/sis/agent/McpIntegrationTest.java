@@ -101,6 +101,14 @@ class McpIntegrationTest extends ApiTestSupport {
 
     static final Map<String, Object> NO_ARGS = Map.of();
 
+    /** Arguments with the course of the fixture (staff of newStaff also own a seed course, so staff tools need it). */
+    static Map<String, Object> in(Fx f, Object... pairs) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("course", f.course().code());
+        for (int i = 0; i < pairs.length; i += 2) m.put((String) pairs[i], pairs[i + 1]);
+        return m;
+    }
+
     // ---- authentication -------------------------------------------------------------------------
 
     @Test
@@ -270,8 +278,12 @@ class McpIntegrationTest extends ApiTestSupport {
         assertTrue(both.containsAll(studentOnly));
         assertTrue(both.containsAll(staffOnly));
 
-        // A person with no pool course sees only the shared tools' kind ("ALL"), no student or staff ones.
-        User nobody = newStaff();   // staff of a seed course that has no pool
+        // Staff see their tools in every live course, pool or not (exams, attendance, roster).
+        User staffNoPool = newStaff();   // staff of a seed course that has no pool
+        assertTrue(toolNames(token(staffNoPool)).containsAll(staffOnly));
+
+        // A student whose only course has no pool sees only the shared kind ("ALL"), no student or staff tools.
+        User nobody = newStudent(newCourse(staffNoPool, false, 2));
         Set<String> none = toolNames(token(nobody));
         for (String t : studentOnly) assertFalse(none.contains(t));
         for (String t : staffOnly) assertFalse(none.contains(t));
@@ -298,10 +310,56 @@ class McpIntegrationTest extends ApiTestSupport {
         assertEquals("STUDENT", courses.get(0).get("role").asString());
         assertFalse(courses.get(0).get("staff").asBoolean());
 
+        // Staff see every live course of theirs (the seed course of newStaff, the pool course and the one without
+        // the pool), not the archived one.
         JsonNode staffCourses = call(token(f.owner()), "list_courses", NO_ARGS);
-        assertEquals(1, staffCourses.size());
-        assertEquals("OWNER", staffCourses.get(0).get("role").asString());
-        assertTrue(staffCourses.get(0).get("staff").asBoolean());
+        Set<Long> ids = new TreeSet<>();
+        for (JsonNode c : staffCourses) {
+            ids.add(c.get("id").asLong());
+            assertEquals("OWNER", c.get("role").asString());
+            assertTrue(c.get("staff").asBoolean());
+        }
+        assertTrue(ids.contains(f.course().id()));
+        assertTrue(ids.contains(noPool.id()));
+        assertFalse(ids.contains(archived.id()));
+        for (JsonNode c : staffCourses) {
+            if (c.get("id").asLong() == noPool.id()) assertFalse(c.get("pool").asBoolean());
+            if (c.get("id").asLong() == f.course().id()) assertTrue(c.get("pool").asBoolean());
+        }
+    }
+
+    @Test
+    void chapterAndRosterTools() throws Exception {
+        Fx f = fx();
+        String staff = token(f.owner());
+
+        JsonNode created = call(staff, "create_chapter", in(f, "number", 2, "title", "Second",
+                "doc_en", "## 1. Alpha\nA.\n## 2. Beta\nB.\n"));
+        assertEquals(2, created.get("number").asInt());
+        assertEquals(2, created.get("topics").size());
+        assertEquals("Alpha", created.get("topics").get(0).get("title_en").asString());
+        assertTrue(callError(staff, "create_chapter", in(f, "number", 2, "title", "Again")).contains("already"));
+
+        // A text replaces the whole text; a new numbered section becomes a new topic, ids of the others stay.
+        long alpha = created.get("topics").get(0).get("id").asLong();
+        JsonNode updated = call(staff, "update_chapter", in(f, "chapter", 2, "title", "Second edition",
+                "doc_en", "## 1. Alpha\nA.\n## 2. Beta\nB.\n## 3. Gamma\nG.\n", "open", false));
+        assertEquals("Second edition", updated.get("title").asString());
+        assertFalse(updated.get("open").asBoolean());
+        assertEquals(3, updated.get("topics").size());
+        assertEquals(alpha, updated.get("topics").get(0).get("id").asLong());
+        assertEquals("## 3. Gamma\nG.", call(token(f.student()), "read_topic",
+                Map.of("chapter", 2, "number", 3, "lang", "en")).get("text").asString());
+
+        JsonNode roster = call(staff, "course_roster", in(f));
+        assertEquals(2, roster.size());
+        JsonNode added = call(staff, "add_student", in(f, "student_no", "99" + next(), "full_name", "Yeni Öğrenci",
+                "email", "yeni" + next() + "@example.edu"));
+        assertTrue(added.get("personId").asLong() > 0);
+        assertEquals(3, call(staff, "course_roster", in(f)).size());
+        // Students never see the roster or chapter editing.
+        rpc(token(f.student()), "tools/call", Map.of("name", "course_roster", "arguments", NO_ARGS))
+                .andExpect(jsonPath("$.error.code").value(-32602));
     }
 
     @Test
@@ -361,10 +419,16 @@ class McpIntegrationTest extends ApiTestSupport {
 
     @Test
     void personWithoutPoolCourseGetsAClearError() throws Exception {
+        // A staff member whose only course has no pool: the course is listed, the pool tools explain.
         User nobody = newStaff();
         String error = callError(token(nobody), "list_chapters", NO_ARGS);
+        assertTrue(error.contains("pool is not enabled"), error);
+        assertEquals(1, call(token(nobody), "list_courses", NO_ARGS).size());
+        // A student in no pool course has no course at all.
+        User lonely = newStudent(newCourse(nobody, false, 2));
+        error = callError(token(lonely), "list_chapters", NO_ARGS);
         assertTrue(error.contains("not in any course"), error);
-        assertEquals(0, call(token(nobody), "list_courses", NO_ARGS).size());
+        assertEquals(0, call(token(lonely), "list_courses", NO_ARGS).size());
     }
 
     // ---- attempt first and first answer ---------------------------------------------------------
@@ -533,26 +597,26 @@ class McpIntegrationTest extends ApiTestSupport {
         long pending = submitQuestion(f.student(), f.chapter(), "D");
         String t = token(f.owner());
 
-        JsonNode review = call(t, "list_questions_for_review", NO_ARGS);
+        JsonNode review = call(t, "list_questions_for_review", in(f));
         assertEquals(1, review.size());
         // Lower-case input is understood whatever the server's locale is (Turkish dotted i).
-        assertEquals(1, call(t, "list_questions_for_review", Map.of("status", "pending")).size());
+        assertEquals(1, call(t, "list_questions_for_review", in(f, "status", "pending")).size());
         assertEquals(pending, review.get(0).get("id").asLong());
         assertEquals("D", review.get(0).get("correct").asString());
         assertEquals(f.student().name(), review.get(0).get("author_name").asString());
 
         // The note is required for REVISE, as on the web.
-        assertTrue(callError(t, "decide_question", Map.of("question_id", pending, "action", "REVISE"))
+        assertTrue(callError(t, "decide_question", in(f, "question_id", pending, "action", "REVISE"))
                 .contains("Write a note so the student knows what to change."));
         assertEquals("PENDING", getQuestion(f.student(), pending).get("status").asString());
-        call(t, "decide_question", Map.of("question_id", pending, "action", "revise", "note", "Please reword it."));
+        call(t, "decide_question", in(f, "question_id", pending, "action", "revise", "note", "Please reword it."));
         assertEquals("NEEDS_REVISION", getQuestion(f.student(), pending).get("status").asString());
-        call(t, "decide_question", Map.of("question_id", pending, "action", "APPROVE"));
+        call(t, "decide_question", in(f, "question_id", pending, "action", "APPROVE"));
         assertEquals("APPROVED", getQuestion(f.author(), pending).get("status").asString());
-        assertEquals(2, call(t, "question_counts", NO_ARGS).get(0).get("approved").asInt());
+        assertEquals(2, call(t, "question_counts", in(f)).get(0).get("approved").asInt());
 
         // Staff of the course see the participation table, with real names.
-        JsonNode overview = call(t, "class_overview", NO_ARGS);
+        JsonNode overview = call(t, "class_overview", in(f));
         assertEquals(2, overview.size());
         assertTrue(overview.toString().contains(f.author().name()));
 
@@ -591,12 +655,12 @@ class McpIntegrationTest extends ApiTestSupport {
         String staff = token(f.owner());
         String st = token(f.student());
 
-        JsonNode synced = call(staff, "sync_topics", NO_ARGS);
+        JsonNode synced = call(staff, "sync_topics", in(f));
         assertEquals(1, synced.get(0).get("chapter").asInt());
         assertEquals(2, synced.get(0).get("topics").size());
         long t1 = synced.get(0).get("topics").get(0).get("id").asLong();
         long t2 = synced.get(0).get("topics").get(1).get("id").asLong();
-        JsonNode set = call(staff, "set_question_topics", Map.of("question_id", f.question(), "topic_ids", List.of(t1)));
+        JsonNode set = call(staff, "set_question_topics", in(f, "question_id", f.question(), "topic_ids", List.of(t1)));
         assertEquals(t1, set.get("topics").get(0).get("id").asLong());
 
         assertEquals(2, call(st, "list_topics", NO_ARGS).size());
@@ -651,7 +715,7 @@ class McpIntegrationTest extends ApiTestSupport {
         doPut(f.owner(), "/api/exams/" + examId + "/results/" + f.student().studentNo(), Map.of("answers", List.of(ans)))
                 .andExpect(status().isOk());
         assertEquals(0, call(st, "my_exam_results", NO_ARGS).size());
-        assertTrue(call(staff, "publish_exam", Map.of("exam_id", examId)).get("published").asBoolean());
+        assertTrue(call(staff, "publish_exam", in(f, "exam_id", examId)).get("published").asBoolean());
         assertEquals(1, call(st, "my_exam_results", NO_ARGS).size());
         JsonNode detail = call(st, "my_exam_results", Map.of("exam_id", examId));
         assertFalse(detail.get("questions").get(0).get("correct").asBoolean());
@@ -665,7 +729,7 @@ class McpIntegrationTest extends ApiTestSupport {
         assertEquals(1, weak.get(0).get("exam_total").asInt());
         assertEquals(t1, call(st, "get_progress", NO_ARGS).get("weak_topics").get(0).get("topic_id").asLong());
 
-        JsonNode stats = call(staff, "topic_stats", Map.of("chapter", 1));
+        JsonNode stats = call(staff, "topic_stats", in(f, "chapter", 1));
         JsonNode s1 = stats.get(0);
         assertEquals(t1, s1.get("topic_id").asLong());
         assertEquals(1, s1.get("approved_questions").asInt());
@@ -680,7 +744,7 @@ class McpIntegrationTest extends ApiTestSupport {
         assertTrue(text.contains("exam_id=" + examId), text);
         assertTrue(text.contains("read_topic"));
 
-        assertFalse(call(staff, "publish_exam", Map.of("exam_id", examId, "published", false))
+        assertFalse(call(staff, "publish_exam", in(f, "exam_id", examId, "published", false))
                 .get("published").asBoolean());
         assertEquals(0, call(st, "my_exam_results", NO_ARGS).size());
         assertTrue(callError(st, "my_exam_results", Map.of("exam_id", examId)).length() > 0);

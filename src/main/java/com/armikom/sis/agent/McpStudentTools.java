@@ -12,6 +12,7 @@ import com.armikom.sis.pool.PoolQuestionController;
 import com.armikom.sis.pool.PoolTopicController;
 import com.armikom.sis.pool.Topics;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -37,7 +38,8 @@ import static com.armikom.sis.agent.McpTool.str;
  * are kept apart, so an agent can quiz a student many times without changing the participation report.
  */
 @Component
-public class McpStudentTools {
+@Order(1)
+public class McpStudentTools implements McpToolProvider {
 
     private static final List<String> LETTERS = List.of("A", "B", "C", "D");
     private static final List<String> STUDY_STATUSES = List.of("NOT_STARTED", "STUDYING", "REVIEWING", "DONE");
@@ -70,12 +72,14 @@ public class McpStudentTools {
         this.baseUrl = baseUrl;
     }
 
-    List<McpTool> tools() {
+    @Override
+    public List<McpTool> tools() {
         return List.of(
                 // ---------- for everyone ----------
                 McpTool.read(Audience.ALL, "list_courses", "List my courses",
-                        "Lists your courses that use the question pool, with your role in each. Pass the code or id "
-                                + "of one as 'course' to the other tools when you have more than one.",
+                        "Lists your courses with your role in each (staff: every live course; students: the courses "
+                                + "with the question pool). Pass the code or id of one as 'course' to the other tools "
+                                + "when you have more than one.",
                         schema(), c -> listCourses(c)),
                 McpTool.read(Audience.ALL, "whoami", "Who am I",
                         "Shows the signed-in person: nickname, courses, and for the course (if known) the role and "
@@ -236,6 +240,7 @@ public class McpStudentTools {
             m.put("language", r.language());
             m.put("role", r.role());
             m.put("staff", r.staff());
+            m.put("pool", r.pool());
             return m;
         }).toList();
     }

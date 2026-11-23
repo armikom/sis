@@ -48,8 +48,8 @@ public record McpTool(String name, String title, String description, Map<String,
     // ---------- schema helpers ----------
 
     static final Map<String, Object> COURSE = Map.of("type", "string", "description",
-            "Course code (for example SENG403) or course id. Needed only when you have more than one course with "
-                    + "the question pool; see list_courses.");
+            "Course code (for example SENG403) or course id. Needed only when you have more than one course; see "
+                    + "list_courses.");
 
     /**
      * An object schema. Pass pairs of (name, property schema); names that end with "!" are required. The optional
@@ -95,6 +95,46 @@ public record McpTool(String name, String title, String description, Map<String,
 
     static Map<String, Object> intList(String description) {
         return Map.of("type", "array", "items", Map.of("type", "integer"), "description", description);
+    }
+
+    /** A JSON number (whole or decimal), for points. */
+    static Map<String, Object> number(String description) {
+        return Map.of("type", "number", "description", description);
+    }
+
+    static Map<String, Object> strList(String description) {
+        return Map.of("type", "array", "items", Map.of("type", "string"), "description", description);
+    }
+
+    /** An array whose items have the given schema. */
+    static Map<String, Object> listOf(Map<String, Object> items, String description) {
+        return Map.of("type", "array", "items", items, "description", description);
+    }
+
+    /**
+     * A nested object schema (no {@code course} property). Pass the description, then pairs of (name, property
+     * schema); names that end with "!" are required.
+     */
+    static Map<String, Object> obj(String description, Object... pairs) {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        List<String> required = new ArrayList<>();
+        for (int i = 0; i < pairs.length; i += 2) {
+            String name = (String) pairs[i];
+            if (name.endsWith("!")) {
+                name = name.substring(0, name.length() - 1);
+                required.add(name);
+            }
+            properties.put(name, pairs[i + 1]);
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("type", "object");
+        out.put("description", description);
+        out.put("properties", properties);
+        if (!required.isEmpty()) {
+            out.put("required", required);
+        }
+        out.put("additionalProperties", false);
+        return out;
     }
 
     static Map<String, Object> chapter() {
@@ -189,6 +229,40 @@ public record McpTool(String name, String title, String description, Map<String,
                 } else {
                     throw new IllegalArgumentException("The argument '" + name + "' must be a list of whole numbers.");
                 }
+            }
+            return out;
+        }
+
+        /** A decimal number (points), or null when the argument is missing. */
+        public java.math.BigDecimal optDecimal(String name) {
+            JsonNode v = node.path(name);
+            if (v.isMissingNode() || v.isNull()) {
+                return null;
+            }
+            if (v.isNumber()) {
+                return v.decimalValue();
+            }
+            if (v.isString() && v.asString().trim().matches("-?\\d+(\\.\\d+)?")) {
+                return new java.math.BigDecimal(v.asString().trim());
+            }
+            throw new IllegalArgumentException("The argument '" + name + "' must be a number.");
+        }
+
+        /** A list of strings, or null when the argument is missing. */
+        public List<String> optStrList(String name) {
+            JsonNode v = node.path(name);
+            if (v.isMissingNode() || v.isNull()) {
+                return null;
+            }
+            if (!v.isArray()) {
+                throw new IllegalArgumentException("The argument '" + name + "' must be a list of texts.");
+            }
+            List<String> out = new ArrayList<>();
+            for (JsonNode e : v) {
+                if (!e.isValueNode()) {
+                    throw new IllegalArgumentException("The argument '" + name + "' must be a list of texts.");
+                }
+                out.add(e.asString());
             }
             return out;
         }

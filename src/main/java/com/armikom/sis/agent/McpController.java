@@ -98,8 +98,7 @@ public class McpController {
     private final List<McpTool> tools = new ArrayList<>();
 
     public McpController(McpTokenService tokens, JsonMapper json, JdbcClient db, PoolChapterController chapters,
-                         McpCourses courses, CourseAccess access, PoolAccess pool, McpStudentTools studentTools,
-                         McpTeacherTools teacherTools) {
+                         McpCourses courses, CourseAccess access, PoolAccess pool, List<McpToolProvider> providers) {
         this.tokens = tokens;
         this.json = json;
         this.db = db;
@@ -107,8 +106,7 @@ public class McpController {
         this.courses = courses;
         this.access = access;
         this.pool = pool;
-        tools.addAll(studentTools.tools());
-        tools.addAll(teacherTools.tools());
+        for (McpToolProvider p : providers) tools.addAll(p.tools());
     }
 
     /** The server does not open event streams (GET) and keeps no transport sessions (DELETE). */

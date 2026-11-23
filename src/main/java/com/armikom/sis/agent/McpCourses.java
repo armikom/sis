@@ -9,16 +9,21 @@ import java.util.Locale;
 import java.util.stream.Collectors;
 
 /**
- * Which course an MCP call is about. A person's pool courses are the pool-enabled, not archived courses with a live
- * enrollment. The optional {@code course} argument (code or id) picks one; without it the only course is the
- * default, otherwise the tool fails with a message that asks for {@code course}. System admins may address any
- * pool-enabled course by id or code.
+ * Which course an MCP call is about. A person's MCP courses are the not archived courses with a live enrollment:
+ * every course where they are staff (exams, attendance and the roster do not need the pool), and the pool-enabled
+ * ones where they are a student. The optional {@code course} argument (code or id) picks one; without it the only
+ * course is the default, otherwise the tool fails with a message that asks for {@code course}. System admins may
+ * address any course by id or code.
  */
 @Component
 public class McpCourses {
 
-    /** One course of the person; {@code role} is the enrollment role (null for an admin who is not enrolled). */
-    public record Ref(long id, String code, String name, String term, String language, String role, boolean staff) {
+    /**
+     * One course of the person; {@code role} is the enrollment role (null for an admin who is not enrolled),
+     * {@code pool} whether the question pool is switched on.
+     */
+    public record Ref(long id, String code, String name, String term, String language, String role, boolean staff,
+                      boolean pool) {
         String label() {
             return code + " (" + term + ", id " + id + ")";
         }
@@ -32,12 +37,14 @@ public class McpCourses {
 
     public List<Ref> mine(SisPrincipal person) {
         return db.sql("""
-                select c.id, c.code, c.name, c.term, c.language, e.role
+                select c.id, c.code, c.name, c.term, c.language, e.role, c.pool_enabled
                 from enrollment e join course c on c.id = e.course_id
-                where e.person_id = :p and e.deleted_at is null and c.pool_enabled and c.archived_at is null
+                where e.person_id = :p and e.deleted_at is null and c.archived_at is null
+                  and (c.pool_enabled or e.role <> 'STUDENT')
                 order by c.term desc, c.code""").param("p", person.personId())
                 .query((rs, i) -> new Ref(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4),
-                        rs.getString(5), rs.getString(6), person.systemAdmin() || !"STUDENT".equals(rs.getString(6))))
+                        rs.getString(5), rs.getString(6), person.systemAdmin() || !"STUDENT".equals(rs.getString(6)),
+                        rs.getBoolean(7)))
                 .list();
     }
 
@@ -60,9 +67,9 @@ public class McpCourses {
             if (mine.isEmpty()) {
                 throw new IllegalArgumentException(person.systemAdmin()
                         ? "Pass the argument 'course' (course code or id)."
-                        : "You are not in any course with the question pool.");
+                        : "You are not in any course (students need a course with the question pool).");
             }
-            throw new IllegalArgumentException("You are in more than one course with the question pool: "
+            throw new IllegalArgumentException("You are in more than one course: "
                     + mine.stream().map(Ref::label).collect(Collectors.joining(", "))
                     + ". Pass the argument 'course' (course code or id).");
         }
@@ -75,8 +82,7 @@ public class McpCourses {
                 List<Ref> any = anyByQuery("c.id = :q", id);
                 if (!any.isEmpty()) return any.get(0);
             }
-            throw new IllegalArgumentException("You have no course with the question pool and id " + id
-                    + ". Use list_courses.");
+            throw new IllegalArgumentException("You have no course with id " + id + ". Use list_courses.");
         }
         String key = normalize(wanted);
         List<Ref> matches = mine.stream().filter(r -> normalize(r.code()).equals(key)).toList();
@@ -92,17 +98,16 @@ public class McpCourses {
             List<Ref> any = anyByQuery("upper(replace(c.code, ' ', '')) = :q", key);
             if (!any.isEmpty()) return any.get(0);
         }
-        throw new IllegalArgumentException("You have no course with the question pool and the code " + wanted
-                + ". Use list_courses.");
+        throw new IllegalArgumentException("You have no course with the code " + wanted + ". Use list_courses.");
     }
 
     private List<Ref> anyByQuery(String where, Object value) {
         return db.sql("""
-                select c.id, c.code, c.name, c.term, c.language from course c
-                where c.pool_enabled and %s order by c.archived_at nulls first, c.term desc, c.id desc""".formatted(where))
+                select c.id, c.code, c.name, c.term, c.language, c.pool_enabled from course c
+                where %s order by c.archived_at nulls first, c.term desc, c.id desc""".formatted(where))
                 .param("q", value)
                 .query((rs, i) -> new Ref(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4),
-                        rs.getString(5), null, true))
+                        rs.getString(5), null, true, rs.getBoolean(6)))
                 .list();
     }
 
