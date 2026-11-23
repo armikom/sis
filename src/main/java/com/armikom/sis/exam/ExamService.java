@@ -124,6 +124,8 @@ public class ExamService {
         Set<Long> dropAnswers = new HashSet<>();
         Set<Long> rescoreChoice = new HashSet<>();
         Set<Long> clipPoints = new HashSet<>();
+        // Same-size label change (AB → TF): stored answers and option letters are renamed by position, not invalidated.
+        Map<Long, String[]> relabel = new HashMap<>();
         for (ExamQuestion q : removed) dropAnswers.add(q.getId());
         for (QuestionSpec spec : valid.questions()) {
             if (spec.id() == null) continue;
@@ -131,10 +133,15 @@ public class ExamService {
             if (q.getType() != spec.type()) {
                 dropAnswers.add(q.getId());
             } else if (spec.type() == QuestionType.CHOICE) {
+                String oldLabels = q.labels();
                 if (!Objects.equals(q.getCorrectChoice(), spec.correctChoice())
                         || q.getMaxPoints().compareTo(spec.maxPoints()) != 0
-                        || !Objects.equals(q.labels(), spec.choiceLabels())) {
+                        || !Objects.equals(oldLabels, spec.choiceLabels())) {
                     rescoreChoice.add(q.getId());
+                }
+                if (oldLabels != null && spec.choiceLabels() != null && !oldLabels.equals(spec.choiceLabels())
+                        && oldLabels.length() == spec.choiceLabels().length()) {
+                    relabel.put(q.getId(), new String[] {oldLabels, spec.choiceLabels()});
                 }
             } else if (spec.maxPoints().compareTo(q.getMaxPoints()) < 0) {
                 clipPoints.add(q.getId());
@@ -157,6 +164,7 @@ public class ExamService {
             saved.add(q);
             if (spec.topicIds() != null) topics.setExamQuestionTopics(q.getId(), spec.topicIds());
             if (spec.options() != null) options.replace(q.getId(), spec.options());
+            else if (relabel.containsKey(q.getId())) options.relabel(q.getId(), relabel.get(q.getId())[0], relabel.get(q.getId())[1]);
         }
         numberGroups(id, saved);
 
@@ -166,6 +174,8 @@ public class ExamService {
             for (ExamAnswer a : answerRepo.findByQuestionIds(touched)) {
                 ExamQuestion q = existing.get(a.getQuestion().getId());
                 if (rescoreChoice.contains(q.getId())) {
+                    String[] map = relabel.get(q.getId());
+                    if (map != null) a.setAnswerText(ExamLabels.relabel(a.getAnswerText(), map[0], map[1]));
                     a.setPoints(ExamMath.choicePoints(a.getAnswerText(), q.getCorrectChoice(), q.getMaxPoints()));
                 } else if (a.getPoints() != null && a.getPoints().compareTo(q.getMaxPoints()) > 0) {
                     a.setPoints(q.getMaxPoints());
@@ -197,8 +207,18 @@ public class ExamService {
                         q.labels() == null ? null : q.labels().length(), q.labels(), q.getCorrectChoice(),
                         q.getPoolQuestionId(), explicit.getOrDefault(q.getId(), List.of()),
                         topicDtos(effective.get(q.getId())), q.getExplanation(),
-                        opts.getOrDefault(q.getId(), List.of()), q.getGroupId(), q.getSubLabel())).toList(),
+                        inLabelOrder(q, opts.get(q.getId())), q.getGroupId(), q.getSubLabel())).toList(),
                 groupDtos(groupRepo.findByExamId(exam.getId()), questions));
+    }
+
+    /** Options in the question's label order ("TF" lists T before F); letters outside the labels go last. */
+    static List<OptionDto> inLabelOrder(ExamQuestion q, List<OptionDto> options) {
+        if (options == null || options.isEmpty()) return List.of();
+        String labels = q.labels() == null ? "" : q.labels();
+        return options.stream().sorted(Comparator.comparingInt((OptionDto o) -> {
+            int i = labels.indexOf(o.letter());
+            return i < 0 ? Integer.MAX_VALUE : i;
+        }).thenComparing(OptionDto::letter)).toList();
     }
 
     /** Groups in printed order with their number and member question ids (questions in position order). */
@@ -672,7 +692,7 @@ public class ExamService {
             List<Topics.Ref> refs = effective.getOrDefault(q.getId(), List.of());
             out.add(new MyQuestionDto(q.getPosition(), labels.get(q.getId()), q.getText(), q.getHtml(), q.getType(),
                     q.labels(), myAnswer, q.getCorrectChoice(), correct, ExamMath.normalize(points),
-                    ExamMath.normalize(q.getMaxPoints()), topicDtos(refs), opts.getOrDefault(q.getId(), List.of()),
+                    ExamMath.normalize(q.getMaxPoints()), topicDtos(refs), inLabelOrder(q, opts.get(q.getId())),
                     q.getExplanation(), questionStats(q, data, exam), q.getGroupId()));
             tally.add(refs, isMissed(points, q.getMaxPoints()));
         }

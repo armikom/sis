@@ -13,7 +13,7 @@ import {
   MAX_QUESTIONS, TYPE_LABELS, QuestionDraft, GroupDraft, applyKey, bulkRows, buildRequest, destructiveChanges, fromDto,
   gatherGroup, groupStarts, groupsFromDto, hasContent, inheritedTopics, keyString, labelsOk, lettersOf, MAX_EXPLANATION,
   MAX_OPTION_TEXT, MAX_RATIONALE, MAX_SUB_LABEL, MAX_TEXT, newGroupKey, optionRows, pruneGroups, rowLabels, setOption,
-  splitGroups, moveRow, newRow, topicsOf, totalPoints, validate, validLabels,
+  splitGroups, moveRow, newRow, topicsOf, totalPoints, validate, validLabels, withLabels,
 } from './exam-edit.logic';
 
 @Component({
@@ -441,11 +441,7 @@ export class ExamEditComponent implements OnInit {
   }
 
   setLabels(key: number, raw: string) {
-    this.rows.update(rs => rs.map(r => {
-      if (r.key !== key) return r;
-      const ok = r.correctChoice != null && (normalizeLabels(raw) ?? '').includes(r.correctChoice);
-      return { ...r, labels: raw, correctChoice: ok ? r.correctChoice : null };
-    }));
+    this.rows.update(rs => rs.map(r => (r.key === key ? withLabels(r, raw) : r)));
   }
 
   /* ---------- groups ---------- */

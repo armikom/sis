@@ -93,6 +93,14 @@ final class ExamLabels {
         return s.length() == 1 && labels.indexOf(s.charAt(0)) >= 0 ? s : null;
     }
 
+    /** The same position in a new label set of equal size ("B" with AB → TF gives "F"); unknown values stay as they are. */
+    static String relabel(String value, String oldLabels, String newLabels) {
+        if (value == null || value.length() != 1 || oldLabels == null || newLabels == null
+                || oldLabels.length() != newLabels.length()) return value;
+        int i = oldLabels.indexOf(value.charAt(0));
+        return i < 0 ? value : String.valueOf(newLabels.charAt(i));
+    }
+
     /** "A-D" for ABCD, "D/Y" for DY: how a label set is named in messages. */
     static String describe(String labels) {
         if (labels == null || labels.isEmpty()) return "";

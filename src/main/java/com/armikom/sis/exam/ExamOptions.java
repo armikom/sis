@@ -35,6 +35,17 @@ class ExamOptions {
         return out;
     }
 
+    /** Renames stored option letters by position when the label set changes size-for-size (AB → TF). */
+    void relabel(long examQuestionId, String oldLabels, String newLabels) {
+        List<OptionDto> current = of(List.of(examQuestionId)).getOrDefault(examQuestionId, List.of());
+        if (current.isEmpty()) return;
+        List<OptionDto> renamed = new ArrayList<>();
+        for (OptionDto o : current) {
+            renamed.add(new OptionDto(ExamLabels.relabel(o.letter(), oldLabels, newLabels), o.text(), o.rationale()));
+        }
+        replace(examQuestionId, renamed);
+    }
+
     /** Replaces the options of one exam question (already validated). */
     void replace(long examQuestionId, List<OptionDto> options) {
         db.sql("delete from exam_question_option where exam_question_id = :q").param("q", examQuestionId).update();

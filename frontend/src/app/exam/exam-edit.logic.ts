@@ -126,6 +126,32 @@ export function validLabels(raw: string): string {
   return normalizeLabels(raw ?? '') ?? DEFAULT_ROW_LABELS;
 }
 
+/** The same position in a new label set of equal size ("B" with AB → TF gives "F"); otherwise the value stays. */
+export function relabel(value: string | null, oldLabels: string, newLabels: string): string | null {
+  if (!value || oldLabels.length !== newLabels.length) return value;
+  const i = oldLabels.indexOf(value);
+  return i < 0 ? value : newLabels[i];
+}
+
+/**
+ * A row with a new label set: with the same number of labels the key and the option texts move with their position
+ * (the server renames stored answers the same way); otherwise a key outside the new set is cleared.
+ */
+export function withLabels(r: QuestionDraft, raw: string): QuestionDraft {
+  const oldLabels = validLabels(r.labels);
+  const next = normalizeLabels(raw);
+  if (!next || next === oldLabels) {
+    const ok = r.correctChoice != null && (next ?? '').includes(r.correctChoice);
+    return { ...r, labels: raw, correctChoice: ok ? r.correctChoice : null };
+  }
+  if (next.length === oldLabels.length) {
+    const options = r.options.map(o => ({ ...o, letter: relabel(o.letter, oldLabels, next) ?? o.letter }));
+    return { ...r, labels: raw, correctChoice: relabel(r.correctChoice, oldLabels, next), options };
+  }
+  const ok = r.correctChoice != null && next.includes(r.correctChoice);
+  return { ...r, labels: raw, correctChoice: ok ? r.correctChoice : null };
+}
+
 /** Whether the typed label set is acceptable as is. */
 export function labelsOk(raw: string): boolean {
   return normalizeLabels(raw ?? '') !== null;

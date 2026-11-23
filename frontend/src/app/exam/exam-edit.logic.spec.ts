@@ -3,6 +3,7 @@ import {
   applyKey, bulkRows, buildRequest, destructiveChanges, fromDto, gatherGroup, groupsFromDto, hasContent, optionRows, pruneGroups,
   rowLabels, setOption, splitGroups, keyString, moveRow, newRow, parseKey, totalPoints, validate, validLabels,
 } from './exam-edit.logic';
+import { relabel, withLabels } from './exam-edit.logic';
 import type { QuestionDto } from '../core/api.models';
 
 describe('bulkRows', () => {
@@ -34,6 +35,21 @@ describe('labels', () => {
     expect(fromDto(base).labels).toBe('ABCDE');
     expect(fromDto({ ...base, choiceLabels: 'DY', choiceCount: 2 }).labels).toBe('DY');
     expect(fromDto({ ...base, type: 'OPEN' }).labels).toBe('ABCD');
+  });
+});
+
+describe('relabel', () => {
+  it('moves the key and option texts by position when the size stays the same', () => {
+    expect(relabel('B', 'AB', 'TF')).toBe('F');
+    expect(relabel('C', 'AB', 'TF')).toBe('C');
+    expect(relabel('B', 'ABCD', 'AB')).toBe('B');
+    const r = newRow({ labels: 'AB', correctChoice: 'B', options: [{ letter: 'A', text: 'yes', rationale: '' }, { letter: 'B', text: 'no', rationale: '' }] });
+    const tf = withLabels(r, 't/f');
+    expect(tf.correctChoice).toBe('F');
+    expect(tf.options.map(o => o.letter + ':' + o.text)).toEqual(['T:yes', 'F:no']);
+    expect(withLabels(r, 'ABCD').correctChoice).toBe('B');
+    expect(withLabels(r, 'CDEF').correctChoice).toBeNull();
+    expect(withLabels(newRow({ labels: 'ABCD', correctChoice: 'D' }), 'ABC').correctChoice).toBeNull();
   });
 });
 

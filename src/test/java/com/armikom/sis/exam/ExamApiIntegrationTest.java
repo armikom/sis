@@ -602,6 +602,37 @@ class ExamApiIntegrationTest {
                 .andExpect(jsonPath("$.details['questions[2].choiceLabels']").exists());
     }
 
+    @Test
+    void sameSizeLabelChangeRenamesAnswersAndOptions() throws Exception {
+        long courseId = createCourse();
+        Map<String, Object> q1 = q(null, "CHOICE", null, 3, 2, "B");
+        q1.put("options", List.of(Map.of("letter", "A", "text", "true"), Map.of("letter", "B", "text", "false")));
+        JsonNode created = createExam(courseId, exam("TF", null, List.of(q1, q(null, "CHOICE", null, 2, 4, "C"))));
+        long examId = created.get("id").asLong();
+        long tf = qid(created, 0), mc = qid(created, 1);
+        String s1 = studentNo(), s2 = studentNo();
+        saveResult(examId, s1, result(null, List.of(ans(tf, "B", null), ans(mc, "C", null))));
+        saveResult(examId, s2, result(null, List.of(ans(tf, "A", null), ans(mc, "D", null))));
+
+        // AB → TF keeps every answer (renamed); ABCD → AB (size change) keeps letters as they are.
+        Map<String, Object> u1 = labelled(q(tf, "CHOICE", null, 3, null, "F"), "TF");
+        Map<String, Object> u2 = labelled(q(mc, "CHOICE", null, 2, null, "A"), "AB");
+        JsonNode updated = body(putExam(examId, exam("TF", null, List.of(u1, u2))).andExpect(status().isOk()));
+        assertEquals("TF", updated.get("questions").get(0).get("choiceLabels").asString());
+        assertEquals("F", updated.get("questions").get(0).get("correctChoice").asString());
+        JsonNode opts = updated.get("questions").get(0).get("options");
+        assertEquals(List.of("T", "F"), List.of(opts.get(0).get("letter").asString(), opts.get(1).get("letter").asString()));
+        assertEquals("true", opts.get(0).get("text").asString());
+        Map<String, Map<Long, JsonNode>> r = results(examId);
+        assertEquals("F", r.get(s1).get(tf).get("answer").asString());
+        assertEquals(3, r.get(s1).get(tf).get("points").asDouble(), EPS);
+        assertEquals("T", r.get(s2).get(tf).get("answer").asString());
+        assertEquals(0, r.get(s2).get(tf).get("points").asDouble(), EPS);
+        assertEquals("C", r.get(s1).get(mc).get("answer").asString());
+        assertEquals(0, r.get(s1).get(mc).get("points").asDouble(), EPS);
+        assertEquals("D", r.get(s2).get(mc).get("answer").asString());
+    }
+
     static List<String> labelsOf(JsonNode questions) {
         List<String> out = new ArrayList<>();
         questions.forEach(q -> out.add(q.get("label").asString()));
