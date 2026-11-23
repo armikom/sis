@@ -691,4 +691,68 @@ class ExamApiIntegrationTest {
         mvc.perform(delete("/api/exams/" + examId).with(t1()).with(csrf())).andExpect(status().isNoContent());
         mvc.perform(delete("/api/courses/" + courseId).with(t1()).with(csrf())).andExpect(status().isNoContent());
     }
+
+    // ---- answer-entry drafts ------------------------------------------------------------------
+
+    ResultActions putDraft(long examId, String no, String body, RequestPostProcessor who) throws Exception {
+        return mvc.perform(put("/api/exams/" + examId + "/drafts/" + no).with(who).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(body));
+    }
+
+    @Test
+    void entryDrafts() throws Exception {
+        long courseId = createCourse();
+        JsonNode e = createExam(courseId, exam("Vize", null, List.of(q(null, "CHOICE", null, 5, 4, "B"))));
+        long examId = e.get("id").asLong();
+        String a = studentNo();
+        String b = studentNo();
+        String sheet = "{\"base\":\"[\\\"\\\"]\",\"name\":\"\",\"cells\":[{\"entered\":true,\"answer\":\"C\",\"points\":\"\",\"text\":\"\"}],\"active\":0}";
+
+        JsonNode saved = body(putDraft(examId, a, sheet, t1()).andExpect(status().isOk()));
+        assertEquals(a, saved.get("studentNo").asString());
+        assertNotNull(saved.get("updatedAt").asString());
+        putDraft(examId, b, sheet, t1()).andExpect(status().isOk());
+        putDraft(examId, b, sheet.replace("\"C\"", "\"D\""), t1()).andExpect(status().isOk());   // upsert
+
+        JsonNode list = getJson("/api/exams/" + examId + "/drafts");
+        assertEquals(2, list.size());
+        assertEquals(a, list.get(0).get("studentNo").asString());
+        assertEquals("C", list.get(0).get("sheet").get("cells").get(0).get("answer").asString());
+        assertEquals("D", list.get(1).get("sheet").get("cells").get(0).get("answer").asString());
+        assertFalse(list.get(0).get("updatedBy").asString().isBlank());
+
+        // Drafts are not results.
+        assertEquals(0, getJson("/api/exams/" + examId + "/results").size());
+
+        // Saving the result removes its draft; deleting the result does too.
+        saveResult(examId, a, result("Ada Example", List.of(ans(qid(e, 0), "B", null))));
+        list = getJson("/api/exams/" + examId + "/drafts");
+        assertEquals(1, list.size());
+        assertEquals(b, list.get(0).get("studentNo").asString());
+        putDraft(examId, a, sheet, t1()).andExpect(status().isOk());
+        mvc.perform(delete("/api/exams/" + examId + "/results/" + a).with(t1()).with(csrf())).andExpect(status().isNoContent());
+        assertEquals(1, getJson("/api/exams/" + examId + "/drafts").size());
+
+        // Explicit delete (idempotent).
+        mvc.perform(delete("/api/exams/" + examId + "/drafts/" + b).with(t1()).with(csrf())).andExpect(status().isNoContent());
+        mvc.perform(delete("/api/exams/" + examId + "/drafts/" + b).with(t1()).with(csrf())).andExpect(status().isNoContent());
+        assertEquals(0, getJson("/api/exams/" + examId + "/drafts").size());
+
+        // Validation: student number format, object body, size.
+        putDraft(examId, "abc", sheet, t1()).andExpect(status().isBadRequest());
+        putDraft(examId, a, "[1,2]", t1()).andExpect(status().isBadRequest());
+        putDraft(examId, a, "\"x\"", t1()).andExpect(status().isBadRequest());
+        String huge = "{\"pad\":\"" + "x".repeat(ExamDraftService.MAX_SHEET_CHARS) + "\"}";
+        putDraft(examId, a, huge, t1()).andExpect(status().isBadRequest());
+
+        // Staff of the course only.
+        putDraft(examId, a, sheet, t2()).andExpect(status().isForbidden());
+        mvc.perform(get("/api/exams/" + examId + "/drafts").with(t2())).andExpect(status().isForbidden());
+        mvc.perform(delete("/api/exams/" + examId + "/drafts/" + a).with(t2()).with(csrf())).andExpect(status().isForbidden());
+        mvc.perform(get("/api/exams/" + examId + "/drafts")).andExpect(status().isUnauthorized());
+
+        // Drafts go with the exam.
+        putDraft(examId, a, sheet, t1()).andExpect(status().isOk());
+        mvc.perform(delete("/api/exams/" + examId).with(t1()).with(csrf())).andExpect(status().isNoContent());
+    }
 }

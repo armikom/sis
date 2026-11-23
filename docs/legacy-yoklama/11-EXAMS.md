@@ -118,6 +118,9 @@ create index ix_exam_answer_question on exam_answer(question_id);
 | GET | `/api/exams/{id}/results` | → `ExamResultDto[]` (öğrenci no artan) |
 | PUT | `/api/exams/{id}/results/{studentNo}` | `ExamResultRequest` → `ExamResultDto` (upsert) |
 | DELETE | `/api/exams/{id}/results/{studentNo}` | → 204 |
+| GET | `/api/exams/{id}/drafts` | → `{studentNo, sheet, updatedAt, updatedBy}[]` — cevap girişinin kaydedilmemiş taslakları (sonuç değildir; öğrenciye, puanlamaya, analize ve CSV'ye girmez) |
+| PUT | `/api/exams/{id}/drafts/{studentNo}` | taslak nesnesi (JSON object, ≤ 500 000 karakter) → `{studentNo, updatedAt}` (upsert; numara formatı kontrol edilir, roster şartı yok) |
+| DELETE | `/api/exams/{id}/drafts/{studentNo}` | → 204 (sonuç kaydedilince ya da silinince taslak da silinir) |
 | GET | `/api/exams/{id}/analysis` | → `ExamAnalysisDto` |
 | GET | `/api/exams/{id}/results.csv` | → CSV (UTF-8 BOM, `;` ayırıcı, mevcut CSV dışa aktarımıyla aynı kurallar) |
 | GET | `/api/courses/{courseId}/learning` | → `CourseLearningDto` |
@@ -212,7 +215,7 @@ Ders detayına (`CourseDetailComponent`) "Sınavlar" bölümü eklenir: sınav k
   - Fare/dokunma: baloncuğa tıklamak cevabı işaretler (aynı baloncuğa tekrar tıklamak temizler).
 - `OPEN`/`FREE` soruları için puan alanı (`OPEN`'da ek olarak cevap metni); puan alanında `Enter` sonraki soruya geçer. Hızlı düğmeler: "Tam", "0".
 - Kaydedince sunucudan dönen puan gösterilir (toplam / yüzde, doğru-yanlış-boş sayıları) ve "Sonraki öğrenci" (sonucu olmayan sıradaki roster öğrencisi) odağı alır; `Enter` ile geçilir.
-- Kaydedilmemiş değişiklik varken öğrenci değiştirmek onay ister. Kaydedilmemiş cevaplar tarayıcıda (localStorage) taslak olarak tutulur; sayfa yenilenir, kapanır ya da başka sayfaya geçilirse öğrenci yeniden açıldığında geri yüklenir (listede "Taslak" rozeti, "Taslağı at" ile vazgeçilir). Kaydedince, onaylı vazgeçişte ve çıkış yapınca silinir.
+- Kaydedilmemiş değişiklik varken öğrenci değiştirmek onay ister. Kaydedilmemiş cevaplar tarayıcıda (localStorage) ve sunucuda (`…/drafts`) taslak olarak tutulur; sayfa yenilenir, kapanır ya da başka sayfaya geçilirse öğrenci yeniden açıldığında geri yüklenir (listede "Taslak" rozeti, "Taslağı at" ile vazgeçilir). Kaydedince ve onaylı vazgeçişte silinir; çıkış yapınca yalnızca tarayıcıdaki kopya silinir, sunucudaki başka bir tarayıcıda yeniden açılır.
 
 ### 4.3 Sınav detayı ve analiz
 - **Sonuçlar** sekmesi: roster + sonucu olan öğrenciler; toplam, yüzde, durum (Girilmedi / Eksik / Tamam), satırdan cevap formuna geçiş, sonucu silme, CSV indirme.

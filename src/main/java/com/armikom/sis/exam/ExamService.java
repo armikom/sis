@@ -42,12 +42,14 @@ public class ExamService {
     private final Clock clock;
     private final Topics topics;
     private final ExamOptions options;
+    private final ExamDraftService drafts;
     private final Pattern studentNoPattern;
 
     public ExamService(ExamRepository examRepo, ExamQuestionRepository questionRepo, ExamResultRepository resultRepo,
                        ExamAnswerRepository answerRepo, EnrollmentRepository enrollmentRepo, CourseAccess access,
                        ExamQueries queries, Clock clock, AppProperties props, Topics topics,
-                       ExamOptions options) {
+                       ExamOptions options, ExamDraftService drafts) {
+        this.drafts = drafts;
         this.topics = topics;
         this.options = options;
         this.examRepo = examRepo;
@@ -379,14 +381,16 @@ public class ExamService {
             a.setPoints(e.getValue().points());
             answers.add(answerRepo.save(a));
         }
+        drafts.remove(examId, studentNo);   // the sheet is saved: its draft is done
         return toDto(result, answers, questions);
     }
 
     @Transactional
     public void deleteResult(long examId, String studentNo) {
         queries.requireExam(examId);
-        resultRepo.findByExam_IdAndStudentNo(examId, studentNo == null ? "" : studentNo.trim())
-                .ifPresent(resultRepo::delete);
+        String no = studentNo == null ? "" : studentNo.trim();
+        resultRepo.findByExam_IdAndStudentNo(examId, no).ifPresent(resultRepo::delete);
+        drafts.remove(examId, no);
     }
 
     /** Upper-case form letter within A..(forms-th letter), null for none; 400 otherwise. */

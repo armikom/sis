@@ -93,6 +93,9 @@ export class ApiService {
   getExamResults(examId: number | string) { return firstValueFrom(this.http.get<M.ExamResultDto[]>(`/api/exams/${examId}/results`)); }
   saveExamResult(examId: number | string, studentNo: string, r: M.ExamResultRequest) { return firstValueFrom(this.http.put<M.ExamResultDto>(`/api/exams/${examId}/results/${encodeURIComponent(studentNo)}`, r)); }
   deleteExamResult(examId: number | string, studentNo: string) { return firstValueFrom(this.http.delete<void>(`/api/exams/${examId}/results/${encodeURIComponent(studentNo)}`)); }
+  getExamDrafts(examId: number | string) { return firstValueFrom(this.http.get<M.ExamDraftDto[]>(`/api/exams/${examId}/drafts`)); }
+  saveExamDraft(examId: number | string, studentNo: string, sheet: unknown) { return firstValueFrom(this.http.put<M.ExamDraftSavedDto>(`/api/exams/${examId}/drafts/${encodeURIComponent(studentNo)}`, sheet)); }
+  deleteExamDraft(examId: number | string, studentNo: string) { return firstValueFrom(this.http.delete<void>(`/api/exams/${examId}/drafts/${encodeURIComponent(studentNo)}`)); }
   getExamAnalysis(examId: number | string) { return firstValueFrom(this.http.get<M.ExamAnalysisDto>(`/api/exams/${examId}/analysis`)); }
   examCsvUrl(examId: number | string) { return `/api/exams/${examId}/results.csv`; }
   getCourseLearning(courseId: number | string) { return firstValueFrom(this.http.get<M.CourseLearningDto>(`/api/courses/${courseId}/learning`)); }

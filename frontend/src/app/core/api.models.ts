@@ -184,6 +184,9 @@ export interface ExamResultDto {
   gradedCount: number; complete: boolean; updatedAt: string; answers: ExamAnswerDto[];
 }
 export interface ExamResultRequest { fullName?: string | null; note?: string | null; answers: ExamAnswerDto[]; }
+/** Unsaved answer-entry sheet kept on the server; `sheet` is the client's own draft object. */
+export interface ExamDraftDto { studentNo: string; sheet: unknown; updatedAt: string; updatedBy: string; }
+export interface ExamDraftSavedDto { studentNo: string; updatedAt: string; }
 
 export interface QuestionAnalysisDto {
   questionId: number; position: number; type: QuestionType; topic: string | null; maxPoints: number;

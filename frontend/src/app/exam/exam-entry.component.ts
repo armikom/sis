@@ -2,10 +2,11 @@ import {
   Component, DestroyRef, ElementRef, Injector, OnInit, afterNextRender, computed, effect, inject, input, signal,
   untracked, viewChild,
 } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ApiService } from '../core/api.service';
 import { errorMessage } from '../shared/errors';
-import type { ExamDto, ExamResultDto, QuestionDto, RosterEntryDto } from '../core/api.models';
+import type { ExamDraftDto, ExamDto, ExamResultDto, QuestionDto, RosterEntryDto } from '../core/api.models';
 import {
   STATUS_LABEL, type Cell, type ResultSummary, type Sheet, type StudentRow,
   bubbleMark, entryOrder, rowMark, searchKey, sheetSummary, buildRequest, buildStudentList, clickBubble, emptySheet, filterStudents, formatPoints, groupRuns,
@@ -14,17 +15,22 @@ import {
 } from './exam-entry.logic';
 import { EntrySounds } from './entry-sounds';
 import { getItem, removeItem, setItem } from '../core/storage';
-import { type Drafts, draftKey, draftSheet, makeDraft, parseDrafts, serializeDrafts, withDraft } from './exam-entry-draft';
+import {
+  type Drafts, draftKey, draftSheet, makeDraft, mergeDrafts, parseDrafts, sameContent, serializeDrafts, toServerSheet, withDraft,
+} from './exam-entry-draft';
 
 const NUM = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 });
 const PCT = new Intl.NumberFormat('tr-TR', { style: 'percent', maximumFractionDigits: 1 });
 const TYPE_LABEL: Record<string, string> = { CHOICE: 'Seçenekli', OPEN: 'Açık uçlu', FREE: 'Serbest' };
 const UNSAVED = 'Kaydedilmemiş değişiklikler var. Kaydetmeden devam edilsin mi?';
+/** Server copy of the drafts: send after typing pauses; retry later after a network/server error. */
+const SYNC_DELAY_MS = 1500;
+const SYNC_RETRY_MS = 15000;
 
 /** Fast answer-entry tool (docs/11-EXAMS.md §4.2). State logic lives in exam-entry.logic.ts. */
 @Component({
   selector: 'app-exam-entry',
-  host: { '(window:beforeunload)': 'onBeforeUnload($event)' },
+  host: { '(window:beforeunload)': 'onBeforeUnload($event)', '(document:visibilitychange)': 'onVisibilityChange()' },
   template: `
     <div class="container-wide" (keydown)="onHostKey($event)">
       <nav class="breadcrumb" aria-label="Konum">
@@ -33,6 +39,9 @@ const UNSAVED = 'Kaydedilmemiş değişiklikler var. Kaydetmeden devam edilsin m
       <div class="page-header">
         <h1>Cevap girişi</h1>
         @if (exam(); as e) { <span class="text-secondary text-sm">{{ e.courseCode }} · {{ e.title }} · {{ questions().length }} soru · {{ num(e.totalPoints) }} puan</span> }
+        @if (syncError()) {
+          <span class="badge badge-warning" title="Kaydedilmemiş taslaklar sunucuya gönderilemedi; bu tarayıcıda duruyor ve yeniden denenecek">Taslaklar yalnızca bu tarayıcıda</span>
+        }
       </div>
       @if (error()) {
         <div class="alert alert-error" role="alert"><span>{{ error() }}</span><button class="btn-icon" (click)="error.set('')" aria-label="Kapat">✕</button></div>
@@ -109,7 +118,7 @@ const UNSAVED = 'Kaydedilmemiş değişiklikler var. Kaydetmeden devam edilsin m
 
               @if (restored(); as rs) {
                 <div class="alert alert-info draft-note" role="status">
-                  <span>Kaydedilmemiş taslak geri yüklendi; kaydetmeyi unutmayın.
+                  <span>Kaydedilmemiş taslak geri yüklendi@if (rs.by) { ({{ rs.by }}) }; kaydetmeyi unutmayın.
                     @if (rs.changed) { <strong>Bu öğrencinin sonucu taslaktan sonra değişti; kaydederseniz taslaktaki cevaplar geçerli olur.</strong> }
                   </span>
                   <button type="button" class="btn btn-outline btn-sm" (click)="discardDraft()" [disabled]="saving()">Taslağı at</button>
@@ -381,7 +390,13 @@ export class ExamEntryComponent implements OnInit {
   /** Unsaved sheets kept in localStorage (exam-entry-draft.ts), keyed by student number. */
   readonly drafts = signal<Drafts>({});
   /** Set while the open sheet came from a draft; `changed` = the server result differs from the one it started from. */
-  readonly restored = signal<{ studentNo: string; changed: boolean } | null>(null);
+  readonly restored = signal<{ studentNo: string; changed: boolean; by?: string } | null>(null);
+  /** The last attempt to send drafts to the server failed (they stay in this browser and are retried). */
+  readonly syncError = signal(false);
+  /** Student numbers whose draft (or its removal) still has to reach the server. */
+  private readonly pendingSync = new Set<string>();
+  private syncTimer: ReturnType<typeof setTimeout> | undefined;
+  private syncing = false;
 
   readonly questions = computed(() => sortQuestions(this.exam()?.questions ?? []));
   readonly runs = computed(() => groupRuns(this.questions()));
@@ -412,7 +427,10 @@ export class ExamEntryComponent implements OnInit {
   private cueTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => clearTimeout(this.cueTimer));
+    inject(DestroyRef).onDestroy(() => {
+      clearTimeout(this.cueTimer);
+      void this.flushDrafts();   // leaving the screen: send what is still pending right away
+    });
     // URL → selection (initial load, back/forward). In-page selection sets `current` first, so this is a no-op then.
     effect(() => {
       const no = this.student()?.trim() || null;
@@ -428,7 +446,13 @@ export class ExamEntryComponent implements OnInit {
       const dirty = this.dirty();
       untracked(() => {
         const d = dirty ? makeDraft(sheet, base, this.currentRow()?.fullName) : null;
-        this.drafts.update(ds => withDraft(ds, no, d));
+        const prev = this.drafts()[no];
+        if (!sameContent(prev, d)) {
+          this.drafts.update(ds => withDraft(ds, no, d));
+          this.queueSync(no);
+        } else if (prev && d && prev.active !== d.active) {
+          this.drafts.update(ds => withDraft(ds, no, { ...prev, active: d.active }));   // local only, still synced
+        }
         if (!dirty && this.restored()?.studentNo === no) this.restored.set(null);
       });
     });
@@ -445,6 +469,7 @@ export class ExamEntryComponent implements OnInit {
 
   async ngOnInit() {
     this.sounds.preload();
+    const serverDrafts = this.api.getExamDrafts(this.id()).catch(() => null);
     try {
       const [exam, results] = await Promise.all([this.api.getExam(this.id()), this.api.getExamResults(this.id())]);
       this.exam.set(exam);
@@ -454,8 +479,8 @@ export class ExamEntryComponent implements OnInit {
       } catch (e) {
         this.error.set(errorMessage(e));
       }
-      const drafts = parseDrafts(getItem(draftKey(this.id())), this.questions());
-      this.drafts.set(drafts);
+      await this.loadDrafts(await serverDrafts);
+      const drafts = this.drafts();
       // Students outside the roster that only exist as a draft are listed again.
       this.extras.set(Object.entries(drafts).map(([studentNo, d]) => ({ studentNo, fullName: d.name })));
       this.loaded.set(true);
@@ -553,7 +578,7 @@ export class ExamEntryComponent implements OnInit {
     this.current.set(no);
     this.sheet.set(draft ? draftSheet(draft) : s);
     this.baseline.set(base);
-    this.restored.set(draft && no !== null ? { studentNo: no, changed: draft.base !== base } : null);
+    this.restored.set(draft && no !== null ? { studentNo: no, changed: draft.base !== base, by: draft.by } : null);
     this.saved.set(null);
     this.error.set('');
     this.hl.set(-1);
@@ -750,6 +775,7 @@ export class ExamEntryComponent implements OnInit {
     if (!this.dirty() || no === null) return true;
     if (!confirm(UNSAVED)) return false;
     this.drafts.update(ds => withDraft(ds, no, null));
+    this.queueSync(no);
     this.restored.set(null);
     return true;
   }
@@ -763,8 +789,68 @@ export class ExamEntryComponent implements OnInit {
     this.sheet.set(s);
     this.baseline.set(sheetSignature(qs, s));
     this.drafts.update(ds => withDraft(ds, no, null));
+    this.queueSync(no);
     this.restored.set(null);
     this.focusActive();
+  }
+
+  /** This browser's drafts merged with the server copy (null = server unreachable: local drafts only). */
+  private async loadDrafts(server: ExamDraftDto[] | null) {
+    const qs = this.questions();
+    const local = parseDrafts(getItem(draftKey(this.id())), qs);
+    const m = server
+      ? mergeDrafts(local, server, qs)
+      : { drafts: local, push: Object.keys(local).filter(no => local[no].synced === undefined) };
+    this.drafts.set(m.drafts);
+    if (!server) this.syncError.set(true);
+    m.push.forEach(no => this.queueSync(no));
+  }
+
+  private queueSync(no: string) {
+    this.pendingSync.add(no);
+    this.scheduleSync(SYNC_DELAY_MS);
+  }
+
+  private scheduleSync(ms: number) {
+    clearTimeout(this.syncTimer);
+    this.syncTimer = setTimeout(() => void this.flushDrafts(), ms);
+  }
+
+  /** Sends pending drafts one at a time (PUT, or DELETE once gone), so a removal never overtakes an older PUT. */
+  private async flushDrafts() {
+    clearTimeout(this.syncTimer);
+    if (this.syncing || this.pendingSync.size === 0) return;
+    this.syncing = true;
+    const examId = this.id();
+    const qs = this.questions();
+    const nos = [...this.pendingSync];
+    this.pendingSync.clear();
+    let failed = false;
+    for (const no of nos) {
+      const d = this.drafts()[no];
+      try {
+        if (d) {
+          const res = await this.api.saveExamDraft(examId, no, toServerSheet(qs, d));
+          const now = this.drafts()[no];
+          if (now && sameContent(now, d)) this.drafts.update(ds => withDraft(ds, no, { ...now, synced: res.updatedAt, by: undefined }));
+        } else {
+          await this.api.deleteExamDraft(examId, no);
+        }
+      } catch (e) {
+        // Rejected requests (validation, access) are not retried; the draft stays in this browser.
+        if (!(e instanceof HttpErrorResponse) || e.status === 0 || e.status === 408 || e.status === 429 || e.status >= 500) {
+          failed = true;
+          if (!this.pendingSync.has(no)) this.pendingSync.add(no);
+        }
+      }
+    }
+    this.syncing = false;
+    this.syncError.set(failed);
+    if (this.pendingSync.size > 0) this.scheduleSync(failed ? SYNC_RETRY_MS : SYNC_DELAY_MS);
+  }
+
+  onVisibilityChange() {
+    if (document.visibilityState === 'hidden') void this.flushDrafts();
   }
 
   /* ---------- leaving ---------- */

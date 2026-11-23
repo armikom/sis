@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import tools.jackson.databind.JsonNode;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -17,9 +18,11 @@ public class ExamController {
 
     private final ExamService service;
     private final ExamAnalysisService analysis;
+    private final ExamDraftService drafts;
 
-    public ExamController(ExamService service, ExamAnalysisService analysis) {
+    public ExamController(ExamService service, ExamAnalysisService analysis, ExamDraftService drafts) {
         this.service = service;
+        this.drafts = drafts;
         this.analysis = analysis;
     }
 
@@ -75,6 +78,24 @@ public class ExamController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteResult(@PathVariable long id, @PathVariable String studentNo) {
         service.deleteResult(id, studentNo);
+    }
+
+    /** Unsaved answer-entry sheets (staff only; never results). */
+    @GetMapping("/exams/{id}/drafts")
+    public List<ExamDraftService.DraftDto> drafts(@PathVariable long id) {
+        return drafts.list(id);
+    }
+
+    @PutMapping("/exams/{id}/drafts/{studentNo}")
+    public ExamDraftService.DraftSavedDto saveDraft(@PathVariable long id, @PathVariable String studentNo,
+                                                    @RequestBody JsonNode sheet) {
+        return drafts.save(id, studentNo, sheet);
+    }
+
+    @DeleteMapping("/exams/{id}/drafts/{studentNo}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteDraft(@PathVariable long id, @PathVariable String studentNo) {
+        drafts.delete(id, studentNo);
     }
 
     @GetMapping("/exams/{id}/analysis")
