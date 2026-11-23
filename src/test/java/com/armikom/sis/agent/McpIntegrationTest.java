@@ -249,7 +249,8 @@ class McpIntegrationTest extends ApiTestSupport {
                 "submit_question", "flag_question", "my_questions", "update_study_state", "log_study_session");
         Set<String> staffOnly = Set.of("class_overview", "student_detail", "decide_question", "edit_question",
                 "list_flags", "resolve_flag", "hide_comment", "set_chapter_open", "create_exam", "get_exam",
-                "list_exams", "question_stats", "import_students", "question_counts");
+                "list_exams", "create_exam_from_pool", "update_exam_question", "exam_results", "question_stats",
+                "import_students", "question_counts");
         assertTrue(student.containsAll(shared));
         assertTrue(staff.containsAll(shared));
         assertTrue(student.containsAll(studentOnly));

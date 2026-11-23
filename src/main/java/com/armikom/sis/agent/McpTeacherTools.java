@@ -203,7 +203,6 @@ public class McpTeacherTools implements McpToolProvider {
                                     a.optStr("title"), a.optStr("doc_en"), a.optStr("doc_tr"), a.optBool("open")));
                             return chapterOut(courseId, id);
                         }),
-                // ---------- exams (built from the pool) ----------
                 // ---------- topics ----------
                 McpTool.write(t, "set_question_topics", "Set the topics of a question",
                         "Replaces the topics of any question of the course (any state). An empty list removes all "
@@ -226,6 +225,7 @@ public class McpTeacherTools implements McpToolProvider {
                                 + "share, and graded exam answers with full points share (effective topics of exam "
                                 + "questions). Weakest first is up to you: sort by the percentages.",
                         schema("chapter", integer("Chapter number (optional).")), c -> topicStats(c)),
+                // ---------- exams (editing tools: McpExamTools) ----------
                 McpTool.write(t, "publish_exam", "Publish or unpublish exam results",
                         "Publishes the results of an exam to the students (they see their own points per question "
                                 + "and the topics to review), or hides them again with published=false. Ask the staff "
@@ -237,17 +237,11 @@ public class McpTeacherTools implements McpToolProvider {
                             Boolean published = c.args().optBool("published");
                             return examService.setPublished(id, published == null || published);
                         }),
-                McpTool.read(t, "list_exams", "List exams", "Lists the exams built from the pool so far.", schema(),
-                        c -> exams.list(c.courseId())),
-                McpTool.read(t, "get_exam", "One exam",
-                        "The questions of an exam in chapter order, with the key and answer numbers.",
-                        schema("exam_id!", integer("Exam id.")), c -> {
-                            long id = c.args().num("exam_id");
-                            return exam(c.courseOf(COURSE_OF_EXAM, id, "Exam not found."), id);
-                        }),
-                McpTool.write(t, "create_exam", "Build an exam",
-                        "Draws approved questions at random, a number per chapter. Each form (A, B, ...) has the same "
-                                + "questions in another order. Print the forms on the web site (Exams). Ask the staff "
+                McpTool.write(t, "create_exam_from_pool", "Build an exam from the pool",
+                        "Draws approved pool questions at random, a number per chapter, into a new exam. Each form "
+                                + "(A, B, ...) has the same questions in another order. The result's id is an exam "
+                                + "that get_exam shows and the exam tools can edit; print the forms on the web site "
+                                + "(Exams). For an exam with your own questions use create_exam. Ask the staff "
                                 + "member before you run it.",
                         schema("title!", str("Exam title, at most 120 characters."),
                                 "questions_per_chapter!",
