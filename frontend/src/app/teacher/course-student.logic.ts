@@ -2,17 +2,22 @@ import type { SessionAttendanceDto, StudentAttendanceState, StudentExamDto } fro
 import type { QuestionStatus, StudentDetail } from '../pool/pool.models';
 
 export interface AttendanceSummary {
-  total: number; present: number; pending: number; rejected: number; absent: number;
-  /** present / total, or null without sessions. Pending records do not count until a decision is made. */
+  total: number; present: number; pending: number; rejected: number; excused: number; absent: number;
+  /**
+   * present / (total - excused), or null without such sessions. Pending records do not count until a decision is
+   * made; excused (izinli) sessions are left out of the base.
+   */
   rate: number | null;
 }
 
 export function attendanceSummary(rows: SessionAttendanceDto[]): AttendanceSummary {
   const count = (s: StudentAttendanceState) => rows.filter(r => r.state === s).length;
   const present = count('PRESENT');
+  const excused = count('EXCUSED');
+  const base = rows.length - excused;
   return {
-    total: rows.length, present, pending: count('PENDING'), rejected: count('REJECTED'), absent: count('ABSENT'),
-    rate: rows.length ? present / rows.length : null,
+    total: rows.length, present, pending: count('PENDING'), rejected: count('REJECTED'), excused,
+    absent: count('ABSENT'), rate: base > 0 ? present / base : null,
   };
 }
 
@@ -44,6 +49,7 @@ export const ATTENDANCE_STATE: Record<StudentAttendanceState, { label: string; b
   PRESENT: { label: 'Katıldı', badge: 'badge-success' },
   PENDING: { label: 'İnceleme bekliyor', badge: 'badge-warning' },
   REJECTED: { label: 'Reddedildi', badge: 'badge-danger' },
+  EXCUSED: { label: 'İzinli', badge: 'badge-info' },
   ABSENT: { label: 'Katılmadı', badge: 'badge-danger' },
 };
 

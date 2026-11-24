@@ -42,7 +42,7 @@ export interface PersonRequest {
   active?: boolean; systemAdmin?: boolean;
 }
 /** Staff only (GET /api/courses/:id/students/:personId): one session row of a student's attendance. */
-export type StudentAttendanceState = 'PRESENT' | 'PENDING' | 'REJECTED' | 'ABSENT';
+export type StudentAttendanceState = 'PRESENT' | 'PENDING' | 'REJECTED' | 'EXCUSED' | 'ABSENT';
 export interface SessionAttendanceDto {
   sessionId: number; title: string; date: string; sessionStatus: string; state: StudentAttendanceState;
   source: 'CHECKIN' | 'MANUAL' | null; flags: string[]; teacherNote: string | null; checkedInAt: string | null;
@@ -117,6 +117,8 @@ export interface DisplayConfigDto {
 export interface AttendanceDto {
   id: number; studentNo: string; fullName: string; source: string; status: string;
   flags: string[]; teacherDecision: string; present: boolean; pending: boolean;
+  /** Away with leave (izinli): neither present nor absent. */
+  excused: boolean;
   minLatencyMs?: number; latencyThresholdMs?: number; thresholdSource?: string;
   areaRatioMax?: number; areaThreshold?: number;
   geoState: string; geoDistanceM?: number; geoAccuracyM?: number;

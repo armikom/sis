@@ -48,7 +48,7 @@ type Tab = 'attendance' | 'exams' | 'pool';
             <button class="card tile" [class.active]="tab() === 'attendance'" (click)="tab.set('attendance')">
               <span class="tile-label">{{ m.tabs.attendance }}</span>
               <span class="tile-value rate-text" [attr.data-level]="level(att().rate)">{{ pct(att().rate) }}</span>
-              <span class="text-sm text-secondary">{{ m.attendanceOf(att().present, att().total) }}@if (att().pending) { · {{ att().pending }} {{ m.pendingShort }} }</span>
+              <span class="text-sm text-secondary">{{ m.attendanceOf(att().present, att().total) }}@if (att().pending) { · {{ att().pending }} {{ m.pendingShort }} }@if (att().excused) { · {{ att().excused }} {{ m.state.EXCUSED.toLocaleLowerCase('tr-TR') }} }</span>
             </button>
           }
           <button class="card tile" [class.active]="tab() === 'exams'" (click)="tab.set('exams')">
@@ -94,6 +94,7 @@ type Tab = 'attendance' | 'exams' | 'pool';
                   {{ att().absent }} {{ m.state.ABSENT.toLocaleLowerCase('tr-TR') }}
                   @if (att().pending) { · {{ att().pending }} {{ m.pendingShort }} }
                   @if (att().rejected) { · {{ att().rejected }} {{ m.state.REJECTED.toLocaleLowerCase('tr-TR') }} }
+                  @if (att().excused) { · {{ att().excused }} {{ m.state.EXCUSED.toLocaleLowerCase('tr-TR') }} }
                 </p>
                 <div class="table-wrap"><table>
                   <thead><tr><th>{{ m.date }}</th><th>{{ m.session }}</th><th>{{ m.status }}</th><th>{{ m.source }}</th><th>{{ m.details }}</th></tr></thead>

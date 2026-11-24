@@ -190,6 +190,11 @@ public class Attendance {
                 || (teacherDecision == TeacherDecision.NONE && status == AttendanceStatus.ACCEPTED);
     }
 
+    /** Away with leave (izinli): not present, but not counted as absent either. */
+    public boolean isExcused() {
+        return teacherDecision == TeacherDecision.EXCUSED;
+    }
+
     public boolean isPending() {
         return status == AttendanceStatus.FLAGGED && teacherDecision == TeacherDecision.NONE;
     }

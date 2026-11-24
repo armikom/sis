@@ -61,7 +61,7 @@ public class CsvExportService {
             row(sb, a.getStudentNo(),
                     a.getFullName(),
                     statusLabel(a),
-                    a.isPresent() ? "EVET" : "HAYIR",
+                    a.isPresent() ? "EVET" : a.isExcused() ? "IZINLI" : "HAYIR",
                     a.getFlags().stream().sorted().map(Flag::name).collect(Collectors.joining(",")),
                     a.getMinLatencyMs() != null ? a.getMinLatencyMs().toString() : "",
                     a.getLatencyThresholdMs() != null ? a.getLatencyThresholdMs().toString() : "",
@@ -97,6 +97,7 @@ public class CsvExportService {
     private static String statusLabel(Attendance a) {
         if (a.getTeacherDecision() == TeacherDecision.APPROVED) return "ONAYLANDI";
         if (a.getTeacherDecision() == TeacherDecision.REJECTED) return "REDDEDILDI";
+        if (a.getTeacherDecision() == TeacherDecision.EXCUSED) return "IZINLI";
         if (a.getStatus() == AttendanceStatus.ACCEPTED) return "KABUL";
         return "INCELEME_BEKLIYOR";
     }

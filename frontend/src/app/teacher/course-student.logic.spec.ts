@@ -11,8 +11,13 @@ const row = (state: StudentAttendanceState): SessionAttendanceDto => ({
 describe('attendanceSummary', () => {
   it('counts states; pending is not presence', () => {
     const s = attendanceSummary([row('PRESENT'), row('PRESENT'), row('PENDING'), row('REJECTED'), row('ABSENT')]);
-    expect(s).toEqual({ total: 5, present: 2, pending: 1, rejected: 1, absent: 1, rate: 0.4 });
+    expect(s).toEqual({ total: 5, present: 2, pending: 1, rejected: 1, excused: 0, absent: 1, rate: 0.4 });
   });
+  it('excused sessions are neither absent nor part of the rate base', () => {
+    const s = attendanceSummary([row('PRESENT'), row('EXCUSED'), row('ABSENT')]);
+    expect(s).toEqual({ total: 3, present: 1, pending: 0, rejected: 0, excused: 1, absent: 1, rate: 0.5 });
+  });
+  it('null rate when every session is excused', () => expect(attendanceSummary([row('EXCUSED')]).rate).toBeNull());
   it('null rate without sessions', () => expect(attendanceSummary([]).rate).toBeNull());
 });
 

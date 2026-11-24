@@ -124,14 +124,16 @@ public class McpAttendanceTools implements McpToolProvider {
                 McpTool.read(t, "session_attendances", "Attendance records of a session",
                         "The attendance records of one session, newest first: student, source (CHECKIN or MANUAL), "
                                 + "status, flags, latency and thresholds, location state, BLE, teacher decision and "
-                                + "note. Filter with only: PENDING (flagged, waiting for a decision), PRESENT or "
-                                + "REJECTED.",
+                                + "note. Filter with only: PENDING (flagged, waiting for a decision), PRESENT, "
+                                + "REJECTED or EXCUSED (away with leave).",
                         schema("session_id!", sessionId,
-                                "only", oneOf("Only records in this state.", "PENDING", "PRESENT", "REJECTED")),
+                                "only", oneOf("Only records in this state.", "PENDING", "PRESENT", "REJECTED",
+                                        "EXCUSED")),
                         c -> listAttendances(c)),
                 McpTool.write(t, "decide_attendance", "Approve or reject an attendance record",
                         "Sets the teacher decision of an attendance record: APPROVED counts as present, REJECTED as "
-                                + "absent, NONE removes an earlier decision. Ask the staff member before you reject.",
+                                + "absent, EXCUSED (izinli) marks the student away with leave (neither present nor "
+                                + "absent), NONE removes an earlier decision. Ask the staff member before you reject.",
                         schema("attendance_id!", attendanceId,
                                 "decision!", oneOf("The decision (APPROVE and REJECT are accepted too).",
                                         names(TeacherDecision.values())),
@@ -141,10 +143,13 @@ public class McpAttendanceTools implements McpToolProvider {
                         "Marks students as present in a session by student number (source MANUAL, approved). Only "
                                 + "students on the course roster are accepted; the result lists the numbers that are "
                                 + "not on the roster, the ones already recorded (skipped) and format errors. Ask the "
-                                + "staff member before you run it.",
+                                + "staff member before you run it. With excused=true the students are recorded as "
+                                + "away with leave (izinli: not present, not absent), e.g. for a sports event or a "
+                                + "medical report; put the reason in note.",
                         schema("session_id!", sessionId,
-                                "student_numbers!", strList("Student numbers to mark present."),
-                                "note", str("Note stored on each record (optional).")),
+                                "student_numbers!", strList("Student numbers to mark present (or excused)."),
+                                "note", str("Note stored on each record (optional)."),
+                                "excused", bool("Record as away with leave (izinli) instead of present.")),
                         c -> addAttendance(c)),
                 new McpTool("remove_attendance", "Delete an attendance record",
                         "Deletes one attendance record (and its stored frame) for good. Ask the staff member and "
@@ -161,13 +166,15 @@ public class McpAttendanceTools implements McpToolProvider {
                 // ---------- reports ----------
                 McpTool.read(t, "attendance_report", "Attendance report of the course",
                         "One row per roster student with the number of opened sessions and how many they were "
-                                + "present, pending (flagged, no decision yet), rejected or absent in, plus "
-                                + "present_pct; and the list of opened sessions.",
+                                + "present, pending (flagged, no decision yet), rejected, excused (away with leave) or "
+                                + "absent in, plus present_pct (excused sessions are left out of the base); and the "
+                                + "list of opened sessions.",
                         schema(), c -> report(c.courseId())),
                 McpTool.read(t, "student_attendance", "One student's attendance",
                         "Profile and one row per opened session for one student of the course (PRESENT, PENDING, "
                                 + "REJECTED or ABSENT with source, flags and note). Find the student by student "
-                                + "number, e-mail, id or a part of the name; several matches come back as a list.",
+                                + "number, e-mail, id or a part of the name; several matches come back as a list. "
+                                + "EXCUSED rows (away with leave) are listed too.",
                         schema("student!", str("Student number, e-mail, id or part of the name.")),
                         c -> studentAttendance(c.courseId(), c.args().str("student"))),
                 McpTool.read(t, "session_export", "CSV export of a session",
@@ -269,13 +276,14 @@ public class McpAttendanceTools implements McpToolProvider {
         long sessionId = sessionOf(c);
         String only = c.args().optStr("only");
         String state = only == null || only.isBlank() ? null : only.trim().toUpperCase(Locale.ROOT);
-        if (state != null && !List.of("PENDING", "PRESENT", "REJECTED").contains(state)) {
-            throw new IllegalArgumentException("The argument 'only' must be PENDING, PRESENT or REJECTED.");
+        if (state != null && !List.of("PENDING", "PRESENT", "REJECTED", "EXCUSED").contains(state)) {
+            throw new IllegalArgumentException("The argument 'only' must be PENDING, PRESENT, REJECTED or EXCUSED.");
         }
         return attendance.list(sessionId).stream()
                 .filter(a -> state == null || switch (state) {
                     case "PENDING" -> a.isPending();
                     case "PRESENT" -> a.isPresent();
+                    case "EXCUSED" -> a.isExcused();
                     default -> a.getTeacherDecision() == TeacherDecision.REJECTED;
                 })
                 .map(a -> AttendanceDto.from(a, deviceHint.of(a.getDeviceId())))
@@ -307,7 +315,8 @@ public class McpAttendanceTools implements McpToolProvider {
         if (numbers == null || numbers.isEmpty()) {
             throw new IllegalArgumentException("The argument 'student_numbers' must list at least one student number.");
         }
-        AttendanceService.BulkResult r = attendance.bulkAdd(sessionId, numbers, c.args().optStr("note"));
+        AttendanceService.BulkResult r = attendance.bulkAdd(sessionId, numbers, c.args().optStr("note"),
+                Boolean.TRUE.equals(c.args().optBool("excused")));
         return new AttendanceController.BulkResultDto(r.added(), r.skipped(), r.errors(), r.notInRoster());
     }
 
@@ -335,7 +344,7 @@ public class McpAttendanceTools implements McpToolProvider {
     /**
      * Per roster student over the opened sessions of the course. The states follow the staff student page:
      * REJECTED = teacher rejected; PRESENT = approved, or accepted without a decision; PENDING = flagged without a
-     * decision; ABSENT = no record.
+     * decision; EXCUSED = away with leave (not absent, left out of the present_pct base); ABSENT = no record.
      */
     private Map<String, Object> report(long courseId) {
         List<Map<String, Object>> sessionRows = db.sql("""
@@ -349,7 +358,8 @@ public class McpAttendanceTools implements McpToolProvider {
                     count(a.id) filter (where a.teacher_decision = 'APPROVED'
                         or (a.teacher_decision = 'NONE' and a.status = 'ACCEPTED')) as present,
                     count(a.id) filter (where a.teacher_decision = 'NONE' and a.status = 'FLAGGED') as pending,
-                    count(a.id) filter (where a.teacher_decision = 'REJECTED') as rejected
+                    count(a.id) filter (where a.teacher_decision = 'REJECTED') as rejected,
+                    count(a.id) filter (where a.teacher_decision = 'EXCUSED') as excused
                 from enrollment e join person p on p.id = e.person_id
                 left join attendance a on a.person_id = p.id and a.session_id in (
                     select s.id from class_session s where s.course_id = :course and s.opened_at is not null)
@@ -362,6 +372,8 @@ public class McpAttendanceTools implements McpToolProvider {
             long present = ((Number) r.get("present")).longValue();
             long pending = ((Number) r.get("pending")).longValue();
             long rejected = ((Number) r.get("rejected")).longValue();
+            long excused = ((Number) r.get("excused")).longValue();
+            long base = total - excused;
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("student_no", r.get("student_no"));
             m.put("full_name", r.get("full_name"));
@@ -369,8 +381,9 @@ public class McpAttendanceTools implements McpToolProvider {
             m.put("present", present);
             m.put("pending", pending);
             m.put("rejected", rejected);
-            m.put("absent", Math.max(0, total - present - pending - rejected));
-            m.put("present_pct", total == 0 ? null : Math.round(1000.0 * present / total) / 10.0);
+            m.put("excused", excused);
+            m.put("absent", Math.max(0, total - present - pending - rejected - excused));
+            m.put("present_pct", base <= 0 ? null : Math.round(1000.0 * present / base) / 10.0);
             return m;
         }).toList();
         Map<String, Object> out = new LinkedHashMap<>();

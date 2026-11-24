@@ -43,7 +43,7 @@ public class CourseStudentController {
 
     /**
      * {@code state}: PRESENT (accepted or approved), PENDING (flagged, no decision yet), REJECTED (teacher
-     * rejected) or ABSENT (no record). {@code checkedInAt}/{@code source}/{@code flags}/{@code teacherNote} are
+     * rejected), EXCUSED (away with leave; not absent) or ABSENT (no record). {@code checkedInAt}/{@code source}/{@code flags}/{@code teacherNote} are
      * null or empty when there is no record.
      */
     public record SessionAttendanceDto(long sessionId, String title, String date, String sessionStatus, String state,
@@ -80,6 +80,7 @@ public class CourseStudentController {
                     null, List.of(), null, null);
         }
         String state = a.getTeacherDecision() == TeacherDecision.REJECTED ? "REJECTED"
+                : a.isExcused() ? "EXCUSED"
                 : a.isPresent() ? "PRESENT"
                 : "PENDING";
         return new SessionAttendanceDto(s.getId(), s.getTitle(), date, s.getStatus().name(), state,

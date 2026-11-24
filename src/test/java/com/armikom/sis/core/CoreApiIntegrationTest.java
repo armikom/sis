@@ -724,6 +724,33 @@ class CoreApiIntegrationTest extends ApiTestSupport {
         doGet(owner, "/api/courses/" + course.id() + "/students/" + s1.id()).andExpect(status().isOk());
     }
 
+    @Test
+    void excusedStudentIsNeitherPresentNorAbsent() throws Exception {
+        User owner = newStaff();
+        CourseRef course = newCourse(owner, false, 2);
+        User s1 = newStudent(course);
+        long week1 = openSession(owner, course, "Hafta 1").get("id").asLong();
+        JsonNode rec = body(doPost(owner, "/api/sessions/" + week1 + "/attendances/manual",
+                Map.of("studentNo", s1.studentNo(), "note", "Futbol takımı müsabakası", "excused", true))
+                .andExpect(status().isCreated()));
+        assertEquals("EXCUSED", rec.get("teacherDecision").asString());
+        assertTrue(rec.get("excused").asBoolean());
+        assertFalse(rec.get("present").asBoolean());
+        assertFalse(rec.get("pending").asBoolean());
+
+        JsonNode att = body(doGet(owner, "/api/courses/" + course.id() + "/students/" + s1.id())
+                .andExpect(status().isOk())).get("attendance");
+        assertEquals("EXCUSED", att.get(0).get("state").asString());
+        assertEquals("Futbol takımı müsabakası", att.get(0).get("teacherNote").asString());
+
+        // The decision can be changed like any other (APPROVED / REJECTED / EXCUSED / NONE).
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .patch("/api/sessions/" + week1 + "/attendances/" + rec.get("id").asLong()).with(owner.as()).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"decision\":\"APPROVED\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.present").value(true))
+                .andExpect(jsonPath("$.excused").value(false));
+    }
+
     CourseRef openCourseWithStudent() throws Exception {
         return newCourse(newStaff(), false, 2);
     }

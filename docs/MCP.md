@@ -206,12 +206,12 @@ there.
 | `extend_session` | `session_id`, `minutes` | OPEN only (1–240) |
 | `close_session` | `session_id` | OPEN → CLOSED |
 | `reopen_session` | `session_id`, `minutes?` (default 15) | CLOSED → OPEN with a new code |
-| `session_attendances` | `session_id`, `only?` (`PENDING`/`PRESENT`/`REJECTED`) | `AttendanceDto` list, newest first; staff see flags, latency, thresholds, geo, BLE, device hint, note |
-| `decide_attendance` | `attendance_id`, `decision` (`APPROVED`/`REJECTED`/`NONE`; `APPROVE`/`REJECT` accepted), `note?` | Teacher decision; ask before rejecting |
-| `add_attendance` | `session_id`, `student_numbers` (list), `note?` | Bulk manual attendance (MANUAL, approved). Result `{added, skipped, errors, notInRoster}`; only roster students are recorded. Ask first |
+| `session_attendances` | `session_id`, `only?` (`PENDING`/`PRESENT`/`REJECTED`/`EXCUSED`) | `AttendanceDto` list, newest first; staff see flags, latency, thresholds, geo, BLE, device hint, note |
+| `decide_attendance` | `attendance_id`, `decision` (`APPROVED`/`REJECTED`/`EXCUSED`/`NONE`; `APPROVE`/`REJECT` accepted), `note?` | Teacher decision; ask before rejecting |
+| `add_attendance` | `session_id`, `student_numbers` (list), `note?`, `excused?` | Bulk manual attendance (MANUAL, approved; with `excused: true` recorded as EXCUSED = izinli, the reason in `note`). Result `{added, skipped, errors, notInRoster}`; only roster students are recorded. Ask first |
 | `remove_attendance` | `attendance_id` | Deletes the record and its frame. `destructiveHint: true`; ask first |
 | `rejected_attempts` | `session_id`, `state?` (`SCANNING`/`COMPLETED`/`REJECTED`/`EXPIRED`, default `REJECTED`) | Check-in attempts: `studentNo`, `resultCode`, `deviceHint`, `conflictStudentNo`, `createdAt` |
-| `attendance_report` | — | `sessions` (opened sessions: id, title, opened_at, status) and `students`: one row per roster student with `student_no`, `full_name`, `sessions`, `present`, `pending`, `rejected`, `absent`, `present_pct` (null without sessions) |
+| `attendance_report` | — | `sessions` (opened sessions: id, title, opened_at, status) and `students`: one row per roster student with `student_no`, `full_name`, `sessions`, `present`, `pending`, `rejected`, `excused`, `absent`, `present_pct` (excused sessions left out of the base; null when the base is 0) |
 | `student_attendance` | `student` (number, e-mail, id or part of the name) | `GET /api/courses/{id}/students/{personId}` result: profile + one row per opened session (PRESENT/PENDING/REJECTED/ABSENT). Several matches → `{message, matches}` |
 | `session_export` | `session_id` | `{filename, csv}`: the same CSV as `GET /api/sessions/{id}/export.csv` (BOM, `;`, Turkish headers, roster students who did not attend) |
 

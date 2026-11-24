@@ -28,8 +28,9 @@ public class AttendanceController {
     }
 
     public record DecideRequest(String decision, String note) {}
-    public record ManualRequest(String studentNo, String note) {}
-    public record BulkRequest(List<String> studentNumbers, String note) {}
+    /** {@code excused}: record as away with leave (izinli) instead of present. */
+    public record ManualRequest(String studentNo, String note, Boolean excused) {}
+    public record BulkRequest(List<String> studentNumbers, String note, Boolean excused) {}
     public record BulkResultDto(int added, int skipped, List<String> errors, List<String> notInRoster) {}
     public record AttemptDto(String studentNo, String resultCode, String deviceHint,
                              String conflictStudentNo, String createdAt) {}
@@ -49,7 +50,7 @@ public class AttendanceController {
     @PostMapping("/attendances/manual")
     @ResponseStatus(HttpStatus.CREATED)
     public AttendanceDto manual(@PathVariable long sessionId, @RequestBody ManualRequest req) {
-        return dto(service.manualAdd(sessionId, req.studentNo(), req.note()));
+        return dto(service.manualAdd(sessionId, req.studentNo(), req.note(), Boolean.TRUE.equals(req.excused())));
     }
 
     @PostMapping("/attendances/bulk")
@@ -57,7 +58,8 @@ public class AttendanceController {
         if (req.studentNumbers() == null || req.studentNumbers().isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_ERROR, Map.of("studentNumbers", "Liste boş olamaz"));
         }
-        var result = service.bulkAdd(sessionId, req.studentNumbers(), req.note());
+        var result = service.bulkAdd(sessionId, req.studentNumbers(), req.note(),
+                Boolean.TRUE.equals(req.excused()));
         return new BulkResultDto(result.added(), result.skipped(), result.errors(), result.notInRoster());
     }
 

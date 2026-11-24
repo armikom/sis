@@ -189,6 +189,26 @@ class McpAttendanceToolsTest extends ApiTestSupport {
         assertEquals(2, many.get("matches").size());
         assertTrue(callError(t, "student_attendance", in(f, "student", "nobody@example.edu")).contains("No student"));
 
+        // Excused (izinli): the other student is away with leave; not present, not absent, not in the pct base.
+        JsonNode excused = call(t, "add_attendance", in(f, "session_id", sessionId,
+                "student_numbers", List.of(f.s2().studentNo()), "note", "Football match", "excused", true));
+        assertEquals(1, excused.get("added").asInt());
+        JsonNode exRecs = call(t, "session_attendances", in(f, "session_id", sessionId, "only", "EXCUSED"));
+        assertEquals(1, exRecs.size());
+        assertEquals("EXCUSED", exRecs.get(0).get("teacherDecision").asString());
+        assertTrue(exRecs.get(0).get("excused").asBoolean());
+        assertFalse(exRecs.get(0).get("present").asBoolean());
+        assertEquals("Football match", exRecs.get(0).get("teacherNote").asString());
+        for (JsonNode r : call(t, "attendance_report", in(f)).get("students")) {
+            if (r.get("student_no").asString().equals(f.s2().studentNo())) {
+                assertEquals(1, r.get("excused").asInt());
+                assertEquals(0, r.get("absent").asInt());
+                assertTrue(r.get("present_pct").isNull());
+            }
+        }
+        assertEquals("EXCUSED", call(t, "student_attendance", in(f, "student", f.s2().studentNo()))
+                .get("attendance").get(0).get("state").asString());
+
         // Close, export, reopen.
         assertEquals("CLOSED", call(t, "close_session", in(f, "session_id", sessionId)).get("status").asString());
         assertFalse(callError(t, "extend_session", in(f, "session_id", sessionId, "minutes", 5)).isBlank());
@@ -197,14 +217,14 @@ class McpAttendanceToolsTest extends ApiTestSupport {
         String csv = export.get("csv").asString();
         assertTrue(csv.contains("ogrenciNo;adSoyad"), csv);
         assertTrue(csv.contains(f.s1().studentNo() + ";" + f.s1().name() + ";ONAYLANDI;EVET"), csv);
-        assertTrue(csv.contains(f.s2().studentNo() + ";" + f.s2().name() + ";GELMEDI"), csv);
+        assertTrue(csv.contains(f.s2().studentNo() + ";" + f.s2().name() + ";IZINLI;IZINLI"), csv);
         JsonNode reopened = call(t, "reopen_session", in(f, "session_id", sessionId, "minutes", 5));
         assertEquals("OPEN", reopened.get("status").asString());
         call(t, "close_session", in(f, "session_id", sessionId));
 
         // Delete a record.
         assertEquals(attId, call(t, "remove_attendance", in(f, "attendance_id", attId)).get("deleted").asLong());
-        assertEquals(0, call(t, "session_attendances", in(f, "session_id", sessionId)).size());
+        assertEquals(1, call(t, "session_attendances", in(f, "session_id", sessionId)).size()); // the excused one
         assertTrue(callError(t, "remove_attendance", in(f, "attendance_id", attId)).contains("not found"));
     }
 

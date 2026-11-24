@@ -95,6 +95,12 @@ public class AttendanceService {
 
     @Transactional
     public Attendance manualAdd(long sessionId, String studentNo, String note) {
+        return manualAdd(sessionId, studentNo, note, false);
+    }
+
+    /** {@code excused}: record the student as away with leave (izinli) instead of present. */
+    @Transactional
+    public Attendance manualAdd(long sessionId, String studentNo, String note, boolean excused) {
         ClassSession session = sessionService.get(sessionId);
         String no = studentNo != null ? studentNo.trim() : "";
         if (!studentNoPattern.matcher(no).matches()) {
@@ -109,7 +115,7 @@ public class AttendanceService {
         Attendance att = new Attendance(session, student.personId(), no, AttendanceSource.MANUAL,
                 AttendanceStatus.ACCEPTED, now);
         att.setFullName(student.fullName());
-        att.setTeacherDecision(TeacherDecision.APPROVED);
+        att.setTeacherDecision(excused ? TeacherDecision.EXCUSED : TeacherDecision.APPROVED);
         att.setTeacherNote(Strings.clip(note, 500));
         att.setDecidedAt(now);
         repo.saveAndFlush(att);
@@ -122,6 +128,11 @@ public class AttendanceService {
 
     @Transactional
     public BulkResult bulkAdd(long sessionId, List<String> studentNumbers, String note) {
+        return bulkAdd(sessionId, studentNumbers, note, false);
+    }
+
+    @Transactional
+    public BulkResult bulkAdd(long sessionId, List<String> studentNumbers, String note, boolean excused) {
         ClassSession session = sessionService.get(sessionId);
         int added = 0;
         int skipped = 0;
@@ -149,7 +160,7 @@ public class AttendanceService {
             Attendance att = new Attendance(session, student.get().personId(), no, AttendanceSource.MANUAL,
                     AttendanceStatus.ACCEPTED, now);
             att.setFullName(student.get().fullName());
-            att.setTeacherDecision(TeacherDecision.APPROVED);
+            att.setTeacherDecision(excused ? TeacherDecision.EXCUSED : TeacherDecision.APPROVED);
             att.setTeacherNote(Strings.clip(note, 500));
             att.setDecidedAt(now);
             repo.saveAndFlush(att);

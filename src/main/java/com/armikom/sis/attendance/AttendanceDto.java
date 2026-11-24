@@ -6,7 +6,7 @@ import java.util.List;
 
 public record AttendanceDto(long id, String studentNo, String fullName, String source,
                             String status, List<String> flags, String teacherDecision,
-                            boolean present, boolean pending,
+                            boolean present, boolean pending, boolean excused,
                             Integer minLatencyMs, Integer latencyThresholdMs, String thresholdSource,
                             Double areaRatioMax, Double areaThreshold,
                             String geoState, Double geoDistanceM, Double geoAccuracyM,
@@ -18,7 +18,7 @@ public record AttendanceDto(long id, String studentNo, String fullName, String s
         return new AttendanceDto(a.getId(), a.getStudentNo(), a.getFullName(),
                 a.getSource().name(), a.getStatus().name(),
                 a.getFlags().stream().sorted().map(Flag::name).toList(),
-                a.getTeacherDecision().name(), a.isPresent(), a.isPending(),
+                a.getTeacherDecision().name(), a.isPresent(), a.isPending(), a.isExcused(),
                 a.getMinLatencyMs(), a.getLatencyThresholdMs(), a.getThresholdSource(),
                 a.getAreaRatioMax(), a.getAreaThreshold(),
                 a.getGeoState().name(), a.getGeoDistanceM(), a.getGeoAccuracyM(),

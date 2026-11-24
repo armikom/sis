@@ -74,6 +74,12 @@ import type { SessionDto, AttendanceDto, AttemptDto, AttemptRejectedEvent, Roste
             <div class="counter-value" style="color:#e65100">{{ pendingCount() }}</div>
             <div class="text-sm text-secondary">{{ msg.dashboard.pending }}</div>
           </button>
+          @if (excusedCount() > 0) {
+            <button class="card counter" (click)="filter.set('excused')" [class.counter-active]="filter() === 'excused'">
+              <div class="counter-value" style="color:var(--c-primary)">{{ excusedCount() }}</div>
+              <div class="text-sm text-secondary">{{ msg.dashboard.excused }}</div>
+            </button>
+          }
           @if (roster().length > 0) {
             <button class="card counter" (click)="showAbsent.set(!showAbsent())" [class.counter-active]="showAbsent()" [attr.aria-expanded]="showAbsent()">
               <div class="counter-value">{{ absentCount() }}</div>
@@ -96,6 +102,7 @@ import type { SessionDto, AttendanceDto, AttemptDto, AttemptRejectedEvent, Roste
                   <li>
                     <span class="text-mono">{{ r.studentNo }}</span> {{ r.fullName }}
                     <button class="btn btn-outline btn-sm" (click)="openManual(r.studentNo)">{{ msg.dashboard.manualAdd }}</button>
+                    <button class="btn btn-outline btn-sm" (click)="openManual(r.studentNo, true)">{{ msg.dashboard.excusedAdd }}</button>
                   </li>
                 }
               </ul>
@@ -126,8 +133,10 @@ import type { SessionDto, AttendanceDto, AttemptDto, AttemptRejectedEvent, Roste
               </div>
               <div class="form-group">
                 <label for="m-note">{{ msg.dashboard.note }}</label>
-                <input id="m-note" class="form-input" [(ngModel)]="manualNote" name="manualNote" maxlength="500" />
+                <input id="m-note" class="form-input" [(ngModel)]="manualNote" name="manualNote" maxlength="500"
+                  [placeholder]="manualExcused ? msg.dashboard.excusedNoteHint : ''" />
               </div>
+              <label class="check-row"><input type="checkbox" [(ngModel)]="manualExcused" name="manualExcused" /> {{ msg.dashboard.excusedCheck }}</label>
               @if (dialogError()) { <p class="form-error" role="alert">{{ dialogError() }}</p> }
               <div class="dialog-actions">
                 <button class="btn btn-outline" type="button" (click)="showManual.set(false)">İptal</button>
@@ -150,6 +159,7 @@ import type { SessionDto, AttendanceDto, AttemptDto, AttemptRejectedEvent, Roste
                 <label for="b-note">{{ msg.dashboard.note }}</label>
                 <input id="b-note" class="form-input" [(ngModel)]="bulkNote" name="bulkNote" maxlength="500" placeholder="Toplu ekleme" />
               </div>
+              <label class="check-row"><input type="checkbox" [(ngModel)]="bulkExcused" name="bulkExcused" /> {{ msg.dashboard.excusedCheck }}</label>
               @if (bulkResult(); as r) {
                 <div class="text-sm mb-md">
                   <strong>{{ msg.dashboard.bulkResult(r.added, r.skipped) }}</strong>
@@ -205,7 +215,7 @@ import type { SessionDto, AttendanceDto, AttemptDto, AttemptRejectedEvent, Roste
                     <td>{{ a.fullName }}</td>
                     <td class="text-sm">{{ formatTime(a.createdAt) }}</td>
                     <td>
-                      <span class="badge" [class.badge-success]="a.present" [class.badge-warning]="a.pending" [class.badge-danger]="a.teacherDecision==='REJECTED'">{{ decisionLabel(a) }}</span>
+                      <span class="badge" [class.badge-success]="a.present" [class.badge-warning]="a.pending" [class.badge-danger]="a.teacherDecision==='REJECTED'" [class.badge-info]="a.excused">{{ decisionLabel(a) }}</span>
                     </td>
                     <td>
                       @for (f of a.flags; track f) { <span class="badge badge-warning" style="margin:1px" [title]="flagDesc(f)">{{ flagLabel(f) }}</span> }
@@ -235,7 +245,7 @@ import type { SessionDto, AttendanceDto, AttemptDto, AttemptRejectedEvent, Roste
                 <div class="dialog-title" id="d-title">{{ a.studentNo }}@if (a.fullName) { — {{ a.fullName }} }</div>
                 <button class="btn-icon" (click)="selectedAtt.set(null)" aria-label="Kapat">✕</button>
               </div>
-              <div class="mb-md"><span class="badge" [class.badge-success]="a.present" [class.badge-warning]="a.pending" [class.badge-danger]="a.teacherDecision==='REJECTED'">{{ decisionLabel(a) }}</span>
+              <div class="mb-md"><span class="badge" [class.badge-success]="a.present" [class.badge-warning]="a.pending" [class.badge-danger]="a.teacherDecision==='REJECTED'" [class.badge-info]="a.excused">{{ decisionLabel(a) }}</span>
                 <span class="text-sm text-secondary"> {{ formatTime(a.createdAt) }}</span></div>
               @if (a.hasFrame) { <img [src]="'/api/sessions/' + s.id + '/attendances/' + a.id + '/frame'" alt="Okutma anındaki kamera karesi" style="width:100%;border-radius:var(--radius-sm);margin-bottom:var(--space-md)" /> }
               <div class="text-sm detail-grid">
@@ -264,6 +274,9 @@ import type { SessionDto, AttendanceDto, AttemptDto, AttemptRejectedEvent, Roste
               <div class="flex-gap mt-md" style="flex-wrap:wrap">
                 <button class="btn btn-primary btn-sm" (click)="decide(a.id, 'APPROVED')" [disabled]="busy()">{{ msg.dashboard.approve }}</button>
                 <button class="btn btn-danger btn-sm" (click)="decide(a.id, 'REJECTED')" [disabled]="busy()">{{ msg.dashboard.reject }}</button>
+                @if (!a.excused) {
+                  <button class="btn btn-outline btn-sm" (click)="decide(a.id, 'EXCUSED')" [disabled]="busy()">{{ msg.dashboard.excuse }}</button>
+                }
                 @if (a.teacherDecision !== 'NONE') {
                   <button class="btn btn-outline btn-sm" (click)="decide(a.id, 'NONE')" [disabled]="busy()">{{ msg.dashboard.clearDecision }}</button>
                 }
@@ -299,6 +312,7 @@ import type { SessionDto, AttendanceDto, AttemptDto, AttemptRejectedEvent, Roste
     </div>
   `,
   styles: [`
+    .check-row { display: flex; gap: var(--space-sm); align-items: center; margin-bottom: var(--space-md); cursor: pointer; }
     .highlight { animation: flash 1s ease-out; }
     @keyframes flash { from { background: var(--c-warning-light); } to { background: transparent; } }
     .card-toolbar { flex-wrap: wrap; gap: var(--space-sm); border: 1px solid var(--c-border); border-radius: var(--radius-md); }
@@ -350,8 +364,8 @@ export class SessionDashboardComponent implements OnInit, OnDestroy {
   readonly showAbsent = signal(false);
   readonly copied = signal(false);
   readonly busy = signal(false);
-  manualNo = ''; manualNote = ''; detailNote = '';
-  bulkText = ''; bulkNote = 'Toplu ekleme';
+  manualNo = ''; manualNote = ''; manualExcused = false; detailNote = '';
+  bulkText = ''; bulkNote = 'Toplu ekleme'; bulkExcused = false;
   readonly showBulk = signal(false);
   readonly bulkResult = signal<BulkAttendanceResult | null>(null);
   private sseSub: SseSubscription | null = null;
@@ -363,6 +377,7 @@ export class SessionDashboardComponent implements OnInit, OnDestroy {
     { key: 'flagged', label: MSG.dashboard.flagged },
     { key: 'accepted', label: MSG.dashboard.accepted },
     { key: 'rejected', label: MSG.dashboard.rejected },
+    { key: 'excused', label: MSG.dashboard.excused },
   ];
 
   readonly filtered = computed(() => {
@@ -373,12 +388,14 @@ export class SessionDashboardComponent implements OnInit, OnDestroy {
       if (f === 'flagged') return a.pending;
       if (f === 'accepted') return a.present;
       if (f === 'rejected') return a.teacherDecision === 'REJECTED';
+      if (f === 'excused') return a.excused;
       return true;
     });
   });
 
   readonly presentCount = computed(() => this.attendances().filter(a => a.present).length);
   readonly pendingCount = computed(() => this.attendances().filter(a => a.pending).length);
+  readonly excusedCount = computed(() => this.attendances().filter(a => a.excused).length);
   /** Roster students with no attendance record at all (same rule as the CSV's GELMEDI rows). */
   readonly absentList = computed(() => {
     const seen = new Set(this.attendances().map(a => a.studentNo));
@@ -499,10 +516,11 @@ export class SessionDashboardComponent implements OnInit, OnDestroy {
     }, () => this.error.set('Panoya kopyalanamadı.'));
   }
 
-  openManual(studentNo: string) {
+  openManual(studentNo: string, excused = false) {
     this.dialogError.set('');
     this.manualNo = studentNo;
     this.manualNote = '';
+    this.manualExcused = excused;
     this.showManual.set(true);
   }
 
@@ -532,8 +550,9 @@ export class SessionDashboardComponent implements OnInit, OnDestroy {
     if (!this.manualNo.trim()) { this.dialogError.set(MSG.student.invalidStudentNo); return; }
     this.busy.set(true);
     try {
-      const created = await this.api.manualAttendance(+this.id(), this.manualNo.trim(), this.manualNote || undefined);
-      this.manualNo = ''; this.manualNote = ''; this.showManual.set(false);
+      const created = await this.api.manualAttendance(+this.id(), this.manualNo.trim(), this.manualNote || undefined,
+        this.manualExcused);
+      this.manualNo = ''; this.manualNote = ''; this.manualExcused = false; this.showManual.set(false);
       this.upsert(created);
     } catch (e) {
       this.dialogError.set(errorMessage(e));
@@ -546,6 +565,7 @@ export class SessionDashboardComponent implements OnInit, OnDestroy {
     this.dialogError.set('');
     this.bulkText = '';
     this.bulkNote = 'Toplu ekleme';
+    this.bulkExcused = false;
     this.bulkResult.set(null);
     this.showBulk.set(true);
   }
@@ -556,7 +576,7 @@ export class SessionDashboardComponent implements OnInit, OnDestroy {
     if (lines.length === 0) { this.dialogError.set('Liste boş.'); return; }
     this.busy.set(true);
     try {
-      const result = await this.api.bulkAttendance(+this.id(), lines, this.bulkNote || undefined);
+      const result = await this.api.bulkAttendance(+this.id(), lines, this.bulkNote || undefined, this.bulkExcused);
       this.bulkResult.set(result);
       if (result.added > 0) {
         await this.load();
@@ -628,6 +648,7 @@ export class SessionDashboardComponent implements OnInit, OnDestroy {
   decisionLabel(a: AttendanceDto) {
     if (a.teacherDecision === 'APPROVED') return a.source === 'MANUAL' ? 'Manuel' : 'Onaylandı';
     if (a.teacherDecision === 'REJECTED') return 'Reddedildi';
+    if (a.teacherDecision === 'EXCUSED') return 'İzinli';
     if (a.status === 'ACCEPTED') return 'Kabul';
     if (a.status === 'FLAGGED') return 'Şüpheli';
     return a.status;
