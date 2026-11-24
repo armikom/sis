@@ -41,7 +41,6 @@ export interface PersonRequest {
   fullName?: string; email?: string; studentNo?: string; username?: string; password?: string;
   active?: boolean; systemAdmin?: boolean;
 }
-export interface MyAttendanceDto { sessionId: number; title: string; date: string; present: boolean; }
 /** Staff only (GET /api/courses/:id/students/:personId): one session row of a student's attendance. */
 export type StudentAttendanceState = 'PRESENT' | 'PENDING' | 'REJECTED' | 'ABSENT';
 export interface SessionAttendanceDto {

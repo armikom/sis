@@ -95,8 +95,7 @@ so on.
 
 | Tool | Arguments | Notes |
 |---|---|---|
-| `my_overview` | — | Start of a session: `course` (with `pool`), `exams` (published totals), `attendance` (`sessions`, `present`, `absent`, `present_pct`, `missed`), `weak_topics` (5), `pool` (totals, suggestion, recent sessions; a sentence when the pool is off) |
-| `my_attendance` | — | Own attendance: totals, `missed`, `rows` per opened session (`sessionId`, `title`, `date`, `present`); never flags or latencies |
+| `my_overview` | — | Start of a session: `course` (with `pool`), `exams` (published totals), `weak_topics` (5), `pool` (totals, suggestion, recent sessions; a sentence when the pool is off) |
 | `get_progress` | — | `weak_topics` (top 5 of `review_topics`); per chapter: `can_answer`, `answered`, `first_try_correct`, `not_answered`, `to_review`, `practice_answers`, `my_questions`, `my_approved`, `questions_to_write`, `study_status`, `confidence`, `notes`; totals; last 5 diary entries; `suggestion` |
 | `next_question` | `chapter?`, `topic?` (id) | Random approved, unanswered, not own; lowest chapter first; `topic` = only questions linked to it. No key. |
 | `answer_question` | `question_id`, `selected` | Writes `question_attempt` (first answer). Refuses if already answered. |

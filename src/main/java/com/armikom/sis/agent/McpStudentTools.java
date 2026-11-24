@@ -6,8 +6,6 @@ import com.armikom.sis.common.PublicBaseUrl;
 import com.armikom.sis.core.course.CourseRepository;
 import com.armikom.sis.exam.ExamDtos.ReviewTopicDto;
 import com.armikom.sis.exam.ExamService;
-import com.armikom.sis.attendance.MyAttendanceController;
-import com.armikom.sis.attendance.MyAttendanceController.MyAttendanceDto;
 import com.armikom.sis.pool.PoolChapterController;
 import com.armikom.sis.pool.PoolException;
 import com.armikom.sis.pool.PoolQuestionController;
@@ -58,13 +56,10 @@ public class McpStudentTools implements McpToolProvider {
     private final PoolTopicController topicApi;
     private final Topics topics;
     private final ExamService exams;
-    private final MyAttendanceController attendance;
 
     public McpStudentTools(JdbcClient db, JsonMapper json, PoolChapterController chapters,
                            PoolQuestionController questions, McpCourses courses, CourseRepository courseRepo,
-                           PublicBaseUrl baseUrl, PoolTopicController topicApi, Topics topics, ExamService exams,
-                           MyAttendanceController attendance) {
-        this.attendance = attendance;
+                           PublicBaseUrl baseUrl, PoolTopicController topicApi, Topics topics, ExamService exams) {
         this.topicApi = topicApi;
         this.topics = topics;
         this.exams = exams;
@@ -142,14 +137,10 @@ public class McpStudentTools implements McpToolProvider {
 
                 // ---------- progress and study state ----------
                 McpTool.read(Audience.STUDENT, "my_overview", "My course overview",
-                        "One call to start a session: the course, your published exam totals, your attendance "
-                                + "(sessions, present, absent, the missed ones), your weak topics, and the pool totals "
+                        "One call to start a session: the course, your published exam totals, your weak topics, "
+                                + "and the pool totals "
                                 + "with a suggestion when the course uses the question pool.",
                         schema(), c -> overview(c)),
-                McpTool.read(Audience.STUDENT, "my_attendance", "My attendance",
-                        "Your attendance in the course: one row per opened session with present true/false "
-                                + "(a record the teacher did not reject). Totals and the missed sessions are included.",
-                        schema(), c -> myAttendance(c.courseId())),
                 McpTool.read(Audience.STUDENT, "get_progress", "My progress",
                         "Start every study session with this. Per chapter: questions left to answer, first-try "
                                 + "results, mistakes to review, your own questions, and the saved study state (status, "
@@ -576,19 +567,6 @@ public class McpStudentTools implements McpToolProvider {
         return out;
     }
 
-    private Map<String, Object> myAttendance(long courseId) {
-        List<MyAttendanceDto> rows = attendance.myAttendance(courseId);
-        long present = rows.stream().filter(MyAttendanceDto::present).count();
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("sessions", rows.size());
-        out.put("present", present);
-        out.put("absent", rows.size() - present);
-        out.put("present_pct", rows.isEmpty() ? null : Math.round(1000.0 * present / rows.size()) / 10.0);
-        out.put("missed", rows.stream().filter(r -> !r.present()).toList());
-        out.put("rows", rows);
-        return out;
-    }
-
     private Map<String, Object> overview(McpCall c) {
         McpCourses.Ref course = c.course();
         long me = c.person().personId();
@@ -602,9 +580,6 @@ public class McpStudentTools implements McpToolProvider {
         courseOut.put("pool", course.pool());
         out.put("course", courseOut);
         out.put("exams", exams.myResults(course.id()));
-        Map<String, Object> att = myAttendance(course.id());
-        att.remove("rows");
-        out.put("attendance", att);
         out.put("weak_topics", weakTopics(me, course.id()).stream().limit(5).toList());
         if (course.pool()) {
             Map<String, Object> progress = progressReport(me, course.id());

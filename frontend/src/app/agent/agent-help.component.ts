@@ -36,7 +36,7 @@ import { getItem, setItem } from '../core/storage';
       <strong>MCP</strong> (Model Context Protocol) lets an AI app talk to this site. After you connect it, you do
       not copy and paste anything: the agent itself
       @if (!teacher) {reads the chapter texts and topics, asks you questions from the pool, checks your answers,
-        goes through your exam results with you, shows your attendance and remembers what you studied.}
+        goes through your exam results with you and remembers what you studied.}
       @else {reads the course for you — roster, chapter texts and topics, the question pool, exams and results,
         attendance — answers your questions about it and, when you say so, changes it: edits a chapter, approves
         questions, builds or edits an exam, enters results, opens an attendance session.}
@@ -143,8 +143,8 @@ import { getItem, setItem } from '../core/storage';
           same pool.</li>
         <li><strong>Learning from an exam</strong> — go through a published exam: what you missed, why the key is
           right, which topics to read again, then practise exactly those topics.</li>
-        <li><strong>Keeping track</strong> — your progress, weak topics, exam totals next to the class, and your
-          attendance in one overview; a study plan for the week.</li>
+        <li><strong>Keeping track</strong> — your progress, weak topics, and exam totals next to the class in
+          one overview; a study plan for the week.</li>
         <li><strong>Writing questions</strong> — feedback on your draft before you submit it.</li>
       </ul>
       <p>A short example:</p>
@@ -171,7 +171,6 @@ import { getItem, setItem } from '../core/storage';
         <li>"I wrote a question for week 5. Give me feedback, but do not write it for me."</li>
         <li>"Explain this answer again in Turkish."</li>
         <li>"Go through my midterm: what did I miss and which topics should I read again?"</li>
-        <li>"How is my attendance? Which sessions did I miss?"</li>
       </ul>
       <p>Ready prompts (if your app shows them): <code>study_plan</code>, <code>study_chapter</code>,
         <code>quiz_me</code>, <code>review_mistakes</code>, <code>review_exam</code>,
@@ -227,7 +226,7 @@ import { getItem, setItem } from '../core/storage';
       <tbody>
         <tr><td>Courses</td><td><code>list_courses</code>, <code>whoami</code>, <code>my_overview</code></td></tr>
         <tr><td>Learn</td><td><code>read_chapter</code>, <code>list_chapters</code>, <code>list_topics</code>, <code>read_topic</code></td></tr>
-        <tr><td>Exams, attendance</td><td><code>my_exam_results</code>, <code>review_topics</code>, <code>my_attendance</code></td></tr>
+        <tr><td>Exams</td><td><code>my_exam_results</code>, <code>review_topics</code></td></tr>
         <tr><td>Answer new questions</td><td><code>next_question</code> → <code>answer_question</code> (first answer, counts)</td></tr>
         <tr><td>Practise again</td><td><code>next_review_question</code> → <code>practice_answer</code> (does not change the first answer)</td></tr>
         <tr><td>Progress</td><td><code>get_progress</code>, <code>update_study_state</code>, <code>log_study_session</code></td></tr>
@@ -326,7 +325,7 @@ import { getItem, setItem } from '../core/storage';
       <strong>MCP</strong> (Model Context Protocol), bir yapay zekâ uygulamasının bu siteyle konuşmasını sağlar.
       Bağladıktan sonra hiçbir şeyi kopyalayıp yapıştırmazsınız; ajan
       @if (!teacher) {bölüm metinlerini ve konuları kendisi okur, havuzdan size soru sorar, cevabınızı kontrol
-        eder, sınav sonucunuzu sizinle birlikte inceler, yoklamanızı gösterir ve neler çalıştığınızı hatırlar.}
+        eder, sınav sonucunuzu sizinle birlikte inceler ve neler çalıştığınızı hatırlar.}
       @else {dersi sizin için okur — liste, bölüm metinleri ve konular, soru havuzu, sınavlar ve sonuçlar,
         yoklama — sorularınızı cevaplar ve siz söyleyince değiştirir: bölüm düzenler, soru onaylar, sınav hazırlar
         ya da düzenler, sonuç girer, yoklama oturumu açar.}
@@ -433,7 +432,7 @@ import { getItem, setItem } from '../core/storage';
           havuzdan hazırlanıyor.</li>
         <li><strong>Sınavdan öğrenmek</strong> — yayınlanmış bir sınavı baştan sona geçmek: neyi kaçırdınız, doğru
           cevap neden doğru, hangi konuları yeniden okumalısınız; sonra tam o konulardan pratik.</li>
-        <li><strong>Takip</strong> — ilerlemeniz, zayıf konularınız, sınıfın yanında sınav puanlarınız ve yoklamanız
+        <li><strong>Takip</strong> — ilerlemeniz, zayıf konularınız, ve sınıfın yanında sınav puanlarınız
           tek bakışta; haftalık çalışma planı.</li>
         <li><strong>Soru yazmak</strong> — göndermeden önce taslağınıza geri bildirim.</li>
       </ul>
@@ -460,7 +459,6 @@ import { getItem, setItem } from '../core/storage';
         <li>"5. hafta için bir soru yazdım; geri bildirim ver ama benim yerime yazma."</li>
         <li>"Bu cevabı Türkçe olarak yeniden açıkla."</li>
         <li>"Vize sınavımı birlikte geçelim: neleri kaçırdım, hangi konuları yeniden okumalıyım?"</li>
-        <li>"Yoklamam nasıl? Hangi derslere gelmedim?"</li>
       </ul>
       <p>Hazır komutlar (uygulamanız gösteriyorsa): <code>study_plan</code>, <code>study_chapter</code>,
         <code>quiz_me</code>, <code>review_mistakes</code>, <code>review_exam</code>,
@@ -516,7 +514,7 @@ import { getItem, setItem } from '../core/storage';
       <tbody>
         <tr><td>Dersler</td><td><code>list_courses</code>, <code>whoami</code>, <code>my_overview</code></td></tr>
         <tr><td>Öğrenme</td><td><code>read_chapter</code>, <code>list_chapters</code>, <code>list_topics</code>, <code>read_topic</code></td></tr>
-        <tr><td>Sınav, yoklama</td><td><code>my_exam_results</code>, <code>review_topics</code>, <code>my_attendance</code></td></tr>
+        <tr><td>Sınav</td><td><code>my_exam_results</code>, <code>review_topics</code></td></tr>
         <tr><td>Yeni soru cevaplama</td><td><code>next_question</code> → <code>answer_question</code> (ilk cevap, sayılır)</td></tr>
         <tr><td>Tekrar</td><td><code>next_review_question</code> → <code>practice_answer</code> (ilk cevabı değiştirmez)</td></tr>
         <tr><td>İlerleme</td><td><code>get_progress</code>, <code>update_study_state</code>, <code>log_study_session</code></td></tr>

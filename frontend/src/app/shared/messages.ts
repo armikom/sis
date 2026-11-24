@@ -70,9 +70,9 @@ export const MSG = {
     removeConfirm: 'Bu kişi ders personelinden çıkarılsın mı?',
   },
   my: {
-    title: 'Derslerim', noCourses: 'Kayıtlı olduğunuz ders yok.', attendance: 'Yoklamalarım', results: 'Sınav sonuçlarım',
-    present: 'Katıldı', absent: 'Katılmadı', noSessions: 'Henüz yoklama yapılmadı.', noResults: 'Henüz sınav sonucu yok.',
-    pool: 'Soru havuzu / Question pool', summary: (p: number, t: number) => `${t} yoklamanın ${p} tanesine katıldınız.`,
+    title: 'Derslerim', noCourses: 'Kayıtlı olduğunuz ders yok.', results: 'Sınav sonuçlarım',
+    noSessions: 'Henüz yoklama yapılmadı.', noResults: 'Henüz sınav sonucu yok.',
+    pool: 'Soru havuzu / Question pool',
   },
   student: {
     enterCode: 'Yoklama kodunu girin', codeLabel: 'Katılım Kodu', codePlaceholder: '6 haneli kod',

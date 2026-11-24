@@ -1,11 +1,11 @@
-import { Component, inject, signal, computed, input, OnInit } from '@angular/core';
+import { Component, inject, signal, input, OnInit } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { ApiService } from '../core/api.service';
 import { MSG } from '../shared/messages';
 import { errorMessage } from '../shared/errors';
-import type { CourseDto, MyAttendanceDto, MyResultDto } from '../core/api.models';
+import type { CourseDto, MyResultDto } from '../core/api.models';
 
-/** A course page for a student: my attendance and my exam results; link to the question pool when enabled. */
+/** A course page for a student: my exam results (attendance is staff only); link to the question pool when enabled. */
 @Component({
   selector: 'app-my-course',
   imports: [RouterLink],
@@ -20,29 +20,7 @@ import type { CourseDto, MyAttendanceDto, MyResultDto } from '../core/api.models
       </div>
       @if (error()) { <p class="form-error" role="alert">{{ error() }}</p> }
 
-      @if (course()?.attendanceEnabled !== false) {
-        <h2>{{ msg.my.attendance }}</h2>
-        @if (attendance().length === 0) {
-          <p class="text-secondary">{{ msg.my.noSessions }}</p>
-        } @else {
-          <p class="text-sm text-secondary">{{ msg.my.summary(presentCount(), attendance().length) }}</p>
-          <div class="table-wrap"><table>
-            <tbody>
-              @for (a of attendance(); track a.sessionId) {
-                <tr>
-                  <td>{{ formatDate(a.date) }}</td>
-                  <td>{{ a.title }}</td>
-                  <td style="text-align:right">
-                    <span class="badge" [class.badge-success]="a.present" [class.badge-danger]="!a.present">{{ a.present ? msg.my.present : msg.my.absent }}</span>
-                  </td>
-                </tr>
-              }
-            </tbody>
-          </table></div>
-        }
-      }
-
-      <h2 class="mt-md">{{ msg.my.results }}</h2>
+      <h2>{{ msg.my.results }}</h2>
       @if (results().length === 0) {
         <p class="text-secondary">{{ msg.my.noResults }}</p>
       } @else {
@@ -68,29 +46,20 @@ export class MyCourseComponent implements OnInit {
   readonly msg = MSG;
   readonly id = input.required<string>();
   readonly course = signal<CourseDto | null>(null);
-  readonly attendance = signal<MyAttendanceDto[]>([]);
   readonly results = signal<MyResultDto[]>([]);
   readonly error = signal('');
-  readonly presentCount = computed(() => this.attendance().filter(a => a.present).length);
 
   async ngOnInit() {
     try {
-      const [c, a, r] = await Promise.all([
+      const [c, r] = await Promise.all([
         this.api.getCourse(this.id()),
-        this.api.getMyAttendance(this.id()),
         this.api.getMyResults(this.id()),
       ]);
       this.course.set(c);
-      this.attendance.set(a);
       this.results.set(r);
     } catch (e) {
       this.error.set(errorMessage(e));
     }
-  }
-
-  formatDate(iso: string) {
-    try { return new Date(iso).toLocaleString('tr-TR', { dateStyle: 'medium', timeStyle: 'short' }); }
-    catch { return iso; }
   }
 
   formatDay(d: string) {

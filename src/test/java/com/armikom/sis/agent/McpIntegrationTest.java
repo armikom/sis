@@ -245,7 +245,7 @@ class McpIntegrationTest extends ApiTestSupport {
 
         Set<String> shared = Set.of("list_courses", "whoami", "list_chapters", "read_chapter", "list_questions",
                 "get_question", "get_comments", "post_comment");
-        Set<String> studentOnly = Set.of("get_progress", "my_overview", "my_attendance", "next_question", "answer_question", "practice_answer",
+        Set<String> studentOnly = Set.of("get_progress", "my_overview", "next_question", "answer_question", "practice_answer",
                 "submit_question", "flag_question", "my_questions", "update_study_state", "log_study_session");
         Set<String> staffOnly = Set.of("class_overview", "student_detail", "decide_question", "edit_question",
                 "list_flags", "resolve_flag", "hide_comment", "set_chapter_open", "create_exam", "get_exam",
@@ -440,11 +440,11 @@ class McpIntegrationTest extends ApiTestSupport {
         JsonNode overview = call(token(lonely), "my_overview", NO_ARGS);
         assertFalse(overview.get("course").get("pool").asBoolean());
         assertTrue(overview.get("pool").isString());
-        assertEquals(0, overview.get("attendance").get("sessions").asInt());
+        assertFalse(overview.has("attendance"));
     }
 
     @Test
-    void studentOverviewAndAttendance() throws Exception {
+    void studentOverviewWithoutAttendance() throws Exception {
         Fx f = fx();
         String st = token(f.student());
         // Two opened sessions; the student is marked present in one.
@@ -453,20 +453,16 @@ class McpIntegrationTest extends ApiTestSupport {
         doPost(f.owner(), "/api/sessions/" + s1 + "/attendances/manual",
                 Map.of("studentNo", f.student().studentNo(), "note", "ok")).andExpect(status().isCreated());
 
-        JsonNode att = call(st, "my_attendance", NO_ARGS);
-        assertEquals(2, att.get("sessions").asInt());
-        assertEquals(1, att.get("present").asInt());
-        assertEquals(1, att.get("absent").asInt());
-        assertEquals(50.0, att.get("present_pct").asDouble(), 1e-6);
-        assertEquals(s2, att.get("missed").get(0).get("sessionId").asLong());
-        // Students get present/absent only, never flags or latencies.
-        assertFalse(att.get("rows").get(0).has("flags"));
+        // Attendance is for staff only: students have no attendance tool and the overview leaves it out.
+        rpc(st, "tools/call", Map.of("name", "my_attendance", "arguments", Map.of()))
+                .andExpect(jsonPath("$.error.code").value(-32602));
+        rpc(st, "tools/call", Map.of("name", "student_attendance", "arguments", Map.of("student", f.student().studentNo())))
+                .andExpect(jsonPath("$.error.code").value(-32602));
 
         JsonNode overview = call(st, "my_overview", NO_ARGS);
         assertEquals(f.course().code(), overview.get("course").get("code").asString());
         assertTrue(overview.get("course").get("pool").asBoolean());
-        assertEquals(1, overview.get("attendance").get("present").asInt());
-        assertFalse(overview.get("attendance").has("rows"));
+        assertFalse(overview.has("attendance"));
         assertEquals(0, overview.get("exams").size());
         assertEquals(1, overview.get("pool").get("totals").get("can_answer").asInt());
         assertTrue(overview.get("pool").has("suggestion"));

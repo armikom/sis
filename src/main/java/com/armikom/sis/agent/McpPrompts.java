@@ -73,11 +73,11 @@ final class McpPrompts {
                             left, use next_review_question with the same topic and practice_answer.
                             4. At the end, save my weak points with update_study_state and write log_study_session."""),
             new Prompt("study_plan", "Make my study plan",
-                    "Look at exams, attendance, weak topics and pool progress, then plan the week.", false,
+                    "Look at exams, weak topics and pool progress, then plan the week.", false,
                     List.of(COURSE), """
                             Make me a study plan{course_text}.
-                            1. Call my_overview. Tell me shortly where I stand: exam totals next to the class, missed \
-                            sessions, weak topics, and (if the course has the pool) how many questions I still have \
+                            1. Call my_overview. Tell me shortly where I stand: exam totals next to the class, weak \
+                            topics, and (if the course has the pool) how many questions I still have \
                             to answer or write.
                             2. For the weak topics call read_topic and explain the main idea of each in a few \
                             sentences; link them to the exam questions I missed (my_exam_results with the exam id).

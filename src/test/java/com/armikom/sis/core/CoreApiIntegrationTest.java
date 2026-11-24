@@ -706,64 +706,22 @@ class CoreApiIntegrationTest extends ApiTestSupport {
     }
 
     @Test
-    void myAttendanceShowsOnlyMyOwnPresenceWithoutAnyVerificationDetails() throws Exception {
+    void studentsCannotSeeAttendanceOnlyStaffCan() throws Exception {
         User owner = newStaff();
         CourseRef course = newCourse(owner, false, 2);
         User s1 = newStudent(course);
-        User s2 = newStudent(course);
         JsonNode week1 = openSession(owner, course, "Hafta 1");
-        clock.advance(Duration.ofMinutes(1));   // sessions are listed by the time they were opened
-        JsonNode week2 = openSession(owner, course, "Hafta 2");
-        // A session that was never opened does not show up.
-        long draft = body(doPost(owner, "/api/sessions", Map.of("courseId", course.id(), "title", "Taslak",
-                "frameCapture", false)).andExpect(status().isCreated())).get("id").asLong();
-
         doPost(owner, "/api/sessions/" + week1.get("id").asLong() + "/attendances/manual",
-                Map.of("studentNo", s1.studentNo(), "note", "Elle eklendi")).andExpect(status().isCreated());
-        long att2 = body(doPost(owner, "/api/sessions/" + week2.get("id").asLong() + "/attendances/manual",
-                Map.of("studentNo", s1.studentNo())).andExpect(status().isCreated())).get("id").asLong();
-        doPost(owner, "/api/sessions/" + week2.get("id").asLong() + "/attendances/manual",
-                Map.of("studentNo", s2.studentNo())).andExpect(status().isCreated());
-        // The teacher rejects s1 in week 2.
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                .patch("/api/sessions/" + week2.get("id").asLong() + "/attendances/" + att2).with(owner.as()).with(csrf())
-                .contentType(MediaType.APPLICATION_JSON).content("{\"decision\":\"REJECTED\",\"note\":\"Orada değildi\"}"))
-                .andExpect(status().isOk());
+                Map.of("studentNo", s1.studentNo())).andExpect(status().isCreated());
 
-        String url = "/api/courses/" + course.id() + "/my-attendance";
-        String raw1 = text(doGet(s1, url).andExpect(status().isOk()));
-        JsonNode mine = json.readTree(raw1);
-        assertEquals(2, mine.size(), raw1);
-        assertEquals("Hafta 1", mine.get(0).get("title").asString());
-        assertTrue(mine.get(0).get("present").asBoolean());
-        assertEquals("Hafta 2", mine.get(1).get("title").asString());
-        assertFalse(mine.get(1).get("present").asBoolean(), "a rejected record is not presence");
-        assertTrue(mine.get(0).get("sessionId").asLong() == week1.get("id").asLong());
-        assertNotEquals(draft, mine.get(0).get("sessionId").asLong());
-
-        String raw2 = text(doGet(s2, url).andExpect(status().isOk()));
-        JsonNode theirs = json.readTree(raw2);
-        assertEquals(2, theirs.size());
-        assertFalse(theirs.get(0).get("present").asBoolean());
-        assertTrue(theirs.get(1).get("present").asBoolean());
-
-        // Nothing but id, title, date and presence; no flags, latency, thresholds, decisions, devices, notes, names.
-        for (JsonNode row : mine) {
-            Set<String> keys = new HashSet<>();
-            row.propertyNames().forEach(keys::add);
-            assertEquals(Set.of("sessionId", "title", "date", "present"), keys);
-        }
-        for (String raw : List.of(raw1, raw2)) {
-            String lower = raw.toLowerCase(java.util.Locale.ROOT);
-            for (String forbidden : List.of("flag", "latency", "threshold", "decision", "devicehint", "note",
-                    "ratio", "geo", "ble", "rtt", s1.studentNo(), s2.studentNo(), "elle eklendi")) {
-                assertFalse(lower.contains(forbidden.toLowerCase(java.util.Locale.ROOT)), forbidden + " in " + raw);
-            }
-        }
-
-        // Members only.
-        doGet(newStudent(openCourseWithStudent()), url).andExpect(status().isForbidden());
-        doGet(null, url).andExpect(status().isUnauthorized());
+        // The old student endpoint is gone.
+        int st = doGet(s1, "/api/courses/" + course.id() + "/my-attendance").andReturn().getResponse().getStatus();
+        assertTrue(st == 404 || st == 403, "status " + st);
+        // Staff-only attendance views stay closed to students, their own record included.
+        doGet(s1, "/api/courses/" + course.id() + "/students/" + s1.id()).andExpect(status().isForbidden());
+        doGet(s1, "/api/sessions/" + week1.get("id").asLong() + "/attendances").andExpect(status().isForbidden());
+        // The teacher still sees it.
+        doGet(owner, "/api/courses/" + course.id() + "/students/" + s1.id()).andExpect(status().isOk());
     }
 
     CourseRef openCourseWithStudent() throws Exception {

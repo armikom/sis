@@ -42,7 +42,6 @@ export class ApiService {
 
   /* Student self-service */
   getCourseStudent(courseId: number | string, personId: number | string) { return firstValueFrom(this.http.get<M.StaffStudentDto>(`/api/courses/${courseId}/students/${personId}`)); }
-  getMyAttendance(courseId: number | string) { return firstValueFrom(this.http.get<M.MyAttendanceDto[]>(`/api/courses/${courseId}/my-attendance`)); }
   getMyResults(courseId: number | string) { return firstValueFrom(this.http.get<M.MyResultDto[]>(`/api/courses/${courseId}/my-results`)); }
   getMyResult(courseId: number | string, examId: number | string) { return firstValueFrom(this.http.get<M.MyResultDetailDto>(`/api/courses/${courseId}/my-results/${examId}`)); }
 
